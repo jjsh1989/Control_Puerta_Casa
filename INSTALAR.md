@@ -19,7 +19,7 @@ Consumo real: unos 400–600 MB de RAM y muy poca CPU (sube un poco mientras se 
 2. **Create CT**:
    - *General*: hostname `puerta`, **Unprivileged container ✓**, contraseña de root.
    - *Template*: `debian-12-standard`.
-   - *Disks*: **8 GB** (los clips de las cámaras se guardan 30 días; con muchas cámaras, pon 16 GB).
+   - *Disks*: **16 GB** (las imágenes de Docker ocupan unos 6 GB y el resto es para fotos y clips de las cámaras). Si se queda corto, se amplía en caliente desde el host: `pct resize ID rootfs 24G`.
    - *CPU*: **2** núcleos (1 vale si no vas a usar el directo).
    - *Memory*: **1536 MB**, Swap 512 MB.
    - *Network*: IPv4 **DHCP**.
