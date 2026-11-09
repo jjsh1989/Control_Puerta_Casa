@@ -150,6 +150,30 @@
     display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
   .prog.pausada { opacity: .6; }
   .prog.de-nuki { background: var(--bg2); }
+  /* ---------- controles de cámara */
+  .ev-cam.vivo { grid-column: 1 / -1; }
+  .controles-cam { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center;
+    padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); margin-top: -4px; }
+  .cruceta { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 40px); gap: 4px; }
+  .cruceta button { padding: 0; height: 40px; justify-content: center; font-size: 18px; }
+  .cruceta .c-arriba { grid-column: 2; grid-row: 1; } .cruceta .c-izq { grid-column: 1; grid-row: 2; }
+  .cruceta .c-der { grid-column: 3; grid-row: 2; } .cruceta .c-abajo { grid-column: 2; grid-row: 3; }
+  .cruceta .c-centro { grid-column: 2; grid-row: 2; font-size: 13px; }
+  .cruceta button { touch-action: none; user-select: none; -webkit-user-select: none; }
+  .cruceta button.pulsado { background: var(--accent) !important; color: #fff !important; transform: scale(.94); }
+  .estado-mover { flex-basis: 100%; text-align: center; font-size: 12px; color: var(--muted); min-height: 16px; margin-top: -4px; }
+  .conectando-cam { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: rgba(0,0,0,.45); font-weight: 600; font-size: 14px; gap: 8px; }
+  .regla-cuerpo select { max-width: 100%; }
+  #cardCamAuto .regla-cuerpo select { width: 100%; }
+  .botones-cam { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+  .botones-cam select { width: auto; }
+  .boton-on { background: var(--accent-soft) !important; color: var(--accent) !important; border-color: color-mix(in srgb, var(--accent) 35%, transparent) !important; }
+  .ev-cam.apagada .foto { background: repeating-linear-gradient(45deg, var(--bg2) 0 10px, var(--bg) 10px 20px); }
+  .ev-cam.apagada .foto span { position: static; background: none; color: var(--muted); font-weight: 600; }
+  .foto-mini { width: 44px; height: 30px; padding: 0; border-radius: 6px; overflow: hidden; vertical-align: middle; margin-left: 6px; display: inline-block; box-shadow: none; }
+  .foto-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .disco-barra { height: 8px; border-radius: 99px; background: var(--bg2); overflow: hidden; margin: 4px 0 10px; }
+  .disco-barra i { display: block; height: 100%; background: var(--accent); }
   .card.aplicando .plegable-cuerpo > :not(.aplicando-aviso) { pointer-events: none; opacity: .45; filter: grayscale(.4); transition: opacity .2s; }
   .aplicando-aviso { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 10px 12px; border-radius: 10px;
     background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 14px; }
@@ -352,6 +376,7 @@
     .puerta-estado .acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); width: 100%; }
     .ajc select, .ajc input[type=time] { min-width: 92px; max-width: 120px; }
     .acc-fila { flex-wrap: wrap; }
+    .controles-cam { padding: 8px; }
     .acc-botones { width: 100%; padding-left: 48px; }
     .acc-botones button { flex: 1; justify-content: center; }
     .puerta-estado .acciones button { flex-direction: column; gap: 3px; padding: 8px 4px; height: auto; min-height: 58px; min-width: 0;
@@ -856,6 +881,16 @@
         <div id="eufyError" class="ayuda oculto" style="color:var(--danger)"></div>
         <div id="eufyDisp"></div>
       </div>
+      <div class="card oculto" data-grupo="camaras" id="cardCamAuto">
+        <div class="cab" style="margin-bottom:0"><h2>Cámaras y cerradura</h2><span class="muted peq" id="caResumen"></span></div>
+        <p class="muted peq" style="margin:6px 0 4px">Qué hacer con las cámaras de esta casa cuando se usa el teclado de la puerta (el teclado está fuera).</p>
+        <div id="caCampos"></div>
+        <div class="acciones" style="margin-top:12px; justify-content:flex-end"><button type="button" class="principal" onclick="guardarCamAuto(this)">Guardar</button></div>
+      </div>
+      <div class="card solo-admin oculto" data-grupo="camaras" id="cardCamDisco">
+        <div class="cab" style="margin-bottom:0"><h2>Espacio de fotos y clips</h2><span class="muted peq" id="cdResumen"></span></div>
+        <div id="cdCuerpo"><div class="vacio">Cargando…</div></div>
+      </div>
 
       <div class="card solo-admin" data-grupo="comunicacion" id="cardWaha">
         <div class="cab"><h2>WhatsApp del servidor (WAHA)</h2>
@@ -1033,6 +1068,13 @@
     <a class="boton principal" id="tgAbrir" target="_blank" rel="noopener"><svg class="i"><use href="#i-telegram"/></svg>Abrir en Telegram</a>
     <button type="button" onclick="dlgTelegram.close(); cargarEstado(); cargarAjustes()">Cerrar</button>
   </div>
+</dialog>
+<dialog id="dlgCamara">
+  <h2 id="dcTitulo">Cámara</h2>
+  <p class="muted peq" id="dcSub" style="margin:4px 0 0"></p>
+  <div id="dcTipos"></div>
+  <div id="dcAjustes"><div class="vacio">Cargando…</div></div>
+  <div class="pie"><button type="button" onclick="dlgCamara.close()">Cerrar</button></div>
 </dialog>
 <dialog id="dlgEvento">
   <h2 id="evTitulo">Evento</h2>
@@ -1500,7 +1542,7 @@ function pintarRegistro() {
   if (!f.length) { $("registro").innerHTML = '<div class="vacio">No hay eventos con estos filtros.</div>'; return; }
   $("registro").innerHTML = `<table><thead><tr><th>Fecha</th><th>Quién</th><th>Qué</th><th>Cómo</th><th>Resultado</th></tr></thead><tbody>` +
     f.map(e => `<tr class="${e.ok ? "" : "mal"} ${esNoche(e.fecha) ? "noche" : ""}"><td>${esc(fecha(e.fecha))}</td>
-      <td>${esc(e.quien)}${e.tipo_persona === "invitado" ? ' <span class="chip aviso">invitado</span>' : ""}${e.tipo_persona === "desactivado" ? ' <span class="chip mal">dado de baja</span>' : ""}</td>
+      <td>${esc(e.quien)}${e.foto ? `<button type="button" class="foto-mini" title="Foto de la cámara" aria-label="Ver foto de la cámara" onclick="verFotoEntrada('${esc(e.foto)}', '${esc(fecha(e.fecha))}')"><img loading="lazy" src="${urlCam(e.foto)}" alt=""></button>` : ""}${e.tipo_persona === "invitado" ? ' <span class="chip aviso">invitado</span>' : ""}${e.tipo_persona === "desactivado" ? ' <span class="chip mal">dado de baja</span>' : ""}</td>
       <td>${esc(e.sentido)}</td><td class="muted peq">${esc(e.origen)}</td>
       <td>${e.ok ? '<span class="chip on">OK</span>' : `<span class="chip mal">${esc(e.estado)}</span>`}</td></tr>`).join("") + "</tbody></table>";
 }
@@ -1759,6 +1801,7 @@ function verGrupo(g) {
   }
   if (g === "casas") pintarEstaCasa();
   if (g === "nuki" && CAP?.nuki) cargarNukiExtra();
+  if (g === "camaras") { if (YO?.rol === "admin") cargarCamDisco(); if ($("cardProgramas").dataset.grupo === "camaras") cargarProgs(); }
 }
 function pintarEstaCasa() {
   $("ecNombre").textContent = YO?.nombre_cuenta || "";
@@ -1852,12 +1895,14 @@ const REGLAS = [
   ["bloqueo", "🔒 Cerradura bloqueada", "cada vez que alguien bloquea la cerradura (teclado, app, botón, automático…)"],
   ["desconectada", "📡 Cerradura sin conexión", "la cerradura no responde (wifi, bridge o pilas) durante los minutos que elijas"],
   ["movimiento", "📷 Movimiento o timbre", "lo detecta la cámara Eufy"],
+  ["camara", "📷 Cámaras sin conexión", "se pierde la conexión con las cámaras (o una con batería se queda sin ella)"],
 ];
 const LETRAS = ["L", "M", "X", "J", "V", "S", "D"];
 function camsCuenta() { return (CAMARA?.dispositivos || []).filter(d => d.cuenta === YO?.cuenta); }
 function pintarReglas() {
   const a = CONFIG.alertas || {reglas: {}, destino: {}};
-  $("reglasAvisos").innerHTML = REGLAS.filter(([t]) => !soloCamara() || t === "movimiento")
+  $("reglasAvisos").innerHTML = REGLAS.filter(([t]) => !soloCamara() || t === "movimiento" || t === "camara")
+    .filter(([t]) => t !== "camara" || camsCuenta().length)
     .filter(([t]) => !(t === "abierta" && CAP && CAP.nuki && CAP.sensor === false)).map(([t, titulo, desc]) => {
     const r = a.reglas[t] || {}, nd = t === "movimiento" && !camsCuenta().length;
     const clipDef = t !== "incorrecto";
@@ -1874,9 +1919,10 @@ function pintarReglas() {
         </span>
         ${t === "incorrecto" || t === "ataque" ? `<span>a partir de <input type="number" min="1" max="10" data-k="minimo" value="${r.minimo || (t === "ataque" ? 5 : 2)}"> intentos seguidos (10 min)</span>` : ""}
         ${t === "abierta" ? `<span>avisar si sigue abierta <input type="number" min="1" max="240" data-k="minutos" value="${r.minutos || 5}"> min</span>` : ""}
+        ${t === "camara" ? `<span>avisar tras <input type="number" min="1" max="240" data-k="minutos" value="${r.minutos || 15}"> min sin conexión</span>` : ""}
         ${t === "desconectada" ? `<span>avisar tras <input type="number" min="1" max="240" data-k="minutos" value="${r.minutos || 15}"> min sin respuesta</span>` : ""}
         ${t === "movimiento" && !nd ? `<span class="muted peq" style="flex-basis:100%">Cámaras que avisan: ${esc(camsCuenta().filter(d => d.movimiento).map(d => d.nombre).join(", ") || "ninguna")} · se eligen en Ajustes → Cámara Eufy</span>` : ""}
-        ${camsCuenta().length && t !== "desconectada" ? `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-k="clip" ${(r.clip ?? clipDef) ? "checked" : ""}>🎥 con clip</label>` : ""}
+        ${camsCuenta().length && !["desconectada", "camara"].includes(t) ? `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-k="clip" ${(r.clip ?? clipDef) ? "checked" : ""}>🎥 con clip</label>` : ""}
       </div>${nd ? '<div class="ayuda">Disponible cuando la cámara esté conectada y asignada a esta cuenta.</div>' : ""}</div>`;
   }).join("");
   const d = a.destino || {};
@@ -2020,7 +2066,7 @@ async function cargarCapacidades() {
 function aplicarCapacidades() {
   const c = CAP || {}, admin = YO?.rol === "admin", nuki = !!c.nuki && !soloCamara();
   document.querySelectorAll("[data-cap]").forEach(b => b.classList.toggle("oculto", !c[b.dataset.cap]));
-  $("cardProgramas").classList.toggle("oculto", !nuki);
+  aplicarCamaras();
   $("cardAjCerradura").classList.toggle("oculto", !(admin && nuki && (c.ajustes || []).length));
   $("cardAccesos").classList.toggle("oculto", !(admin && nuki));
   $("cardOpener").classList.toggle("oculto", !(admin && nuki && ((c.openers || []).length || c.opener)));
@@ -2038,7 +2084,8 @@ function cargarNukiExtra() {
 }
 
 // programaciones
-const ACC_PROG = {bloquear: "🔒 Bloquear", desbloquear: "🔓 Desbloquear", abrir: "🚪 Abrir la puerta", lockngo: "↻ Lock'n'Go", portal: "🏢 Abrir el portal"};
+const ACC_PROG = {bloquear: "🔒 Bloquear", desbloquear: "🔓 Desbloquear", abrir: "🚪 Abrir la puerta", lockngo: "↻ Lock'n'Go", portal: "🏢 Abrir el portal",
+  camaras_apagar: "🙈 Apagar cámaras", camaras_encender: "👁 Encender cámaras", camaras_fuera: "📷 Cámaras: Fuera de casa", camaras_casa: "📷 Cámaras: En casa", camaras_desactivar: "📷 Cámaras: Desactivado"};
 let PROGS = [];
 async function cargarProgs() {
   try { PROGS = (await api("GET", "/api/programaciones")).resultado; } catch (e) { PROGS = []; }
@@ -2047,6 +2094,7 @@ async function cargarProgs() {
 let PROGS_NUKI = null;
 async function cargarProgsNuki(b, fresco) {
   const caja = $("progNuki");
+  if (!CAP?.nuki || soloCamara()) { caja.innerHTML = ""; return; }
   if (!PROGS_NUKI || fresco) caja.innerHTML = '<h3 class="sub-prog" style="margin-top:6px">En la app de Nuki</h3><div class="muted peq">Mirando el registro de la cerradura…</div>';
   await conBoton(b, async () => {
     try { PROGS_NUKI = (await api("GET", "/api/programaciones/nuki" + (fresco ? "?fresco=1" : ""))).resultado; }
@@ -2068,7 +2116,10 @@ function pintarProgsNuki() {
       </div>`).join("") : '<div class="muted peq" style="padding:4px 0 8px">No se ve ninguna acción automática repetida en el último mes.</div>');
 }
 function accionesProgDisponibles() {
-  return Object.keys(ACC_PROG).filter(a => (a !== "lockngo" || CAP?.lockngo) && (a !== "portal" || CAP?.opener));
+  const cams = camsCuenta(), nuki = !!CAP?.nuki && !soloCamara();
+  return Object.keys(ACC_PROG).filter(a => a.startsWith("camaras_")
+    ? (["camaras_apagar", "camaras_encender"].includes(a) ? cams.some(d => d.privacidad) : cams.some(d => d.modos?.length))
+    : nuki && (a !== "lockngo" || CAP?.lockngo) && (a !== "portal" || CAP?.opener));
 }
 function pintarProgs() {
   const caja = $("listaProgramas"), acc = accionesProgDisponibles();
@@ -2097,7 +2148,7 @@ function leerProgs() {
 }
 function nuevaProg() {
   leerProgs();
-  PROGS.push({accion: "bloquear", hora: "23:00", dias: [0,1,2,3,4,5,6], activa: true, avisar: true, solo_si_cerrada: true});
+  PROGS.push({accion: accionesProgDisponibles()[0] || "bloquear", hora: "23:00", dias: [0,1,2,3,4,5,6], activa: true, avisar: true, solo_si_cerrada: true});
   pintarProgs();
 }
 async function guardarProgs(b) {
@@ -2227,7 +2278,7 @@ let CAMARA = null, CAM_CUENTAS = [];
 async function cargarCamara(b, silencioso) {
   try { CAMARA = (await api("GET", "/api/camara")).resultado; }
   catch (e) { CAMARA = null; if (!silencioso) aviso("⚠️ " + e.message); }
-  pintarCamara();
+  pintarCamara(); aplicarCamaras();
   if (silencioso && CONFIG?.alertas) pintarReglas();
 }
 let DIRECTO = null; const CASAS_ABIERTAS = new Set();
@@ -2238,7 +2289,11 @@ function pintarDirecto() {
   const casas = {};
   ds.forEach(d => (casas[d.cuenta] = casas[d.cuenta] || []).push(d));
   const orden = Object.keys(casas).sort((a, b) => (a === YO.cuenta ? -1 : b === YO.cuenta ? 1 : (nombres[a] || a).localeCompare(nombres[b] || b)));
-  const tarjetas = c => `<div class="eventos-cam">${casas[c].map(d => `<button class="ev-cam directo" id="dir-${esc(d.serial)}" onclick="verDirecto('${esc(d.serial)}')">
+  const tarjetas = c => `<div class="eventos-cam">${casas[c].map(d => d.encendida === false
+    ? `<div class="ev-cam apagada" id="dir-${esc(d.serial)}"><div class="foto"><span>🙈 Cámara apagada</span></div>
+        <div class="pie-ev" style="display:flex; justify-content:space-between; align-items:center; gap:6px"><b>${esc(d.nombre)}</b>
+        ${d.privacidad ? `<button type="button" onclick="accionCam('${esc(d.serial)}', 'privacidad', false, this)">Encender</button>` : ""}</div></div>`
+    : `<button class="ev-cam directo" id="dir-${esc(d.serial)}" onclick="verDirecto('${esc(d.serial)}')">
       <div class="foto"><img loading="lazy" src="${esc(conCsrf("/api/camara/foto/" + d.serial))}" alt="" onerror="this.remove()"><span class="play">▶ directo</span></div>
       <div class="pie-ev"><b>${esc(d.nombre)}</b>${d.predeterminada ? ' <span class="chip on">⭐</span>' : ""}</div></button>`).join("")}</div>`;
   const propia = casas[YO.cuenta] ? `<div class="casa-cam">${tarjetas(YO.cuenta)}</div>` : '<div class="vacio">Esta casa no tiene cámaras.</div>';
@@ -2247,10 +2302,11 @@ function pintarDirecto() {
       <summary><b>${esc(nombres[c] || c)}</b> <span class="muted peq">· ${casas[c].length} cámara${casas[c].length === 1 ? "" : "s"}</span></summary>${tarjetas(c)}</details>`).join("") : "");
 }
 function pararDirecto() {
+  document.querySelectorAll(".controles-cam").forEach(x => x.remove());
   if (!DIRECTO) return;
   const el = $("dir-" + DIRECTO);
   if (el) { const img = el.querySelector("img.vivo-img"); if (img) img.src = ""; }
-  DIRECTO = null; pintarDirecto();
+  DIRECTO = null; pararMover(); pintarDirecto();
 }
 function errorDirecto(img, sn) {
   if (DIRECTO !== sn) return;
@@ -2268,9 +2324,164 @@ function verDirecto(sn) {
   const el = $("dir-" + sn); if (!el) return;
   el.classList.add("vivo");
   el.querySelector(".foto").innerHTML = `<img class="vivo-img" alt="Directo" src="${esc(conCsrf("/api/camara/directo/" + encodeURIComponent(sn) + "?t=" + Date.now()))}"
-     onerror="errorDirecto(this, '${esc(sn)}')"><span class="vivo-chip">● EN DIRECTO</span><span class="play">■ parar</span>`;
+     onerror="errorDirecto(this, '${esc(sn)}')"><span class="conectando-cam" id="conectando-${esc(sn)}"><span><span class="girando" style="display:inline-block; vertical-align:-3px; margin-right:6px"></span>Conectando con la cámara…</span></span><span class="vivo-chip">● EN DIRECTO</span><span class="play">■ parar</span>`;
+  (async () => { const t0 = Date.now(); while (DIRECTO === sn && Date.now() - t0 < 30000) { const i = el.querySelector("img.vivo-img"); if (i && i.naturalWidth) { $("conectando-" + sn)?.remove(); return; } await new Promise(r => setTimeout(r, 300)); } })();
+  el.insertAdjacentHTML("afterend", controlesCam(sn));
   el.scrollIntoView({behavior: "smooth", block: "nearest"});
 }
+// ---------- controles de cada cámara (solo salen los que admite)
+function camPorSerial(sn) { return (CAMARA?.dispositivos || []).find(d => d.serial === sn); }
+function controlesCam(sn) {
+  const d = camPorSerial(sn); if (!d) return "";
+  const mover = d.ptz ? `<div class="cruceta" aria-label="Mover la cámara">
+      <button type="button" class="c-arriba" title="Arriba" aria-label="Arriba" onpointerdown="empezarMover('${sn}', 'arriba', this, event)" onpointerup="pararMover()" onpointerleave="pararMover()" onpointercancel="pararMover()" oncontextmenu="return false">▲</button>
+      <button type="button" class="c-izq" title="Izquierda" aria-label="Izquierda" onpointerdown="empezarMover('${sn}', 'izquierda', this, event)" onpointerup="pararMover()" onpointerleave="pararMover()" onpointercancel="pararMover()" oncontextmenu="return false">◀</button>
+      ${d.calibrar ? `<button type="button" class="c-centro" title="Volver a la posición inicial" aria-label="Recolocar" onclick="accionCam('${sn}', 'calibrar', null, this)">⟲</button>` : ""}
+      <button type="button" class="c-der" title="Derecha" aria-label="Derecha" onpointerdown="empezarMover('${sn}', 'derecha', this, event)" onpointerup="pararMover()" onpointerleave="pararMover()" onpointercancel="pararMover()" oncontextmenu="return false">▶</button>
+      <button type="button" class="c-abajo" title="Abajo" aria-label="Abajo" onpointerdown="empezarMover('${sn}', 'abajo', this, event)" onpointerup="pararMover()" onpointerleave="pararMover()" onpointercancel="pararMover()" oncontextmenu="return false">▼</button></div>` : "";
+  const botones = [
+    d.foco ? `<button type="button" class="${d.foco_on ? "boton-on" : ""}" onclick="accionCam('${sn}', 'foco', ${!d.foco_on}, this)">🔦 ${d.foco_on ? "Apagar foco" : "Encender foco"}</button>` : "",
+    d.sirena ? `<button type="button" class="peligro" onclick="sirenaCam('${sn}', this)">🚨 Sirena</button>` : "",
+    d.privacidad ? `<button type="button" onclick="apagarCam('${sn}', this)">🙈 Apagar cámara</button>` : "",
+    d.modos?.length ? `<label class="interruptor" style="gap:6px">Modo <select onchange="accionCam('${sn}', 'modo', this.value, this)">${d.modos.map(m => `<option value="${m.v}" ${m.v === d.modo ? "selected" : ""}>${esc(m.t)}</option>`).join("")}</select></label>` : "",
+    YO?.rol === "admin" && d.n_ajustes ? `<button type="button" class="fantasma" onclick="abrirAjustesCam('${sn}')">⚙️ Ajustes</button>` : "",
+  ].filter(Boolean).join("");
+  if (!mover && !botones) return "";
+  return `<div class="controles-cam" id="ctl-${esc(sn)}">${mover}<div class="botones-cam">${botones}</div>${d.ptz ? '<div class="estado-mover" id="estadoMover">Mantén pulsada una flecha para seguir girando</div>' : ""}</div>`;
+}
+let MOVER = null;
+async function empezarMover(sn, dir, b, ev) {
+  ev?.preventDefault(); pararMover();
+  const yo = MOVER = {sn, dir, b};
+  b.classList.add("pulsado");
+  const flecha = {arriba: "↑", abajo: "↓", izquierda: "←", derecha: "→"}[dir];
+  let pasos = 0;
+  while (MOVER === yo) {  // un paso nada más pulsar y otro cada ~0,7 s mientras se mantenga
+    try {
+      await api("POST", "/api/camara/accion", {serial: sn, que: "mover", valor: dir});
+      pasos++; if ($("estadoMover")) $("estadoMover").textContent = `Girando ${flecha} · ${pasos} paso${pasos === 1 ? "" : "s"} (la imagen tarda un segundo en reflejarlo)`;
+    } catch (e) { aviso("⚠️ " + e.message); break; }
+    await new Promise(r => setTimeout(r, 700));
+  }
+  b.classList.remove("pulsado");
+  setTimeout(() => { if (!MOVER && $("estadoMover")) $("estadoMover").textContent = "Mantén pulsada una flecha para seguir girando"; }, 2500);
+}
+function pararMover() { if (MOVER) { MOVER.b.classList.remove("pulsado"); MOVER = null; } }
+async function accionCam(sn, que, valor, b) {
+  await conBoton(b, async () => {
+    const r = (await api("POST", "/api/camara/accion", {serial: sn, que, valor})).resultado;
+    if (r.texto) aviso(r.texto);
+    setTimeout(async () => { await cargarCamara(null, true); if (DIRECTO === sn) { const c = $("ctl-" + sn); if (c) c.outerHTML = controlesCam(sn); } else pintarDirecto(); }, 2500);
+  });
+}
+async function sirenaCam(sn, b) {
+  const d = camPorSerial(sn);
+  if (!await confirmar(`La cámara «${d?.nombre}» hará sonar la sirena 10 segundos. Se oye mucho.`, {titulo: "Sirena", boton: "Hacer sonar", peligro: true})) return;
+  accionCam(sn, "sirena", 10, b);
+}
+async function apagarCam(sn, b) {
+  const d = camPorSerial(sn);
+  if (!await confirmar(`«${d?.nombre}» dejará de ver y de grabar hasta que la vuelvas a encender.`, {titulo: "Apagar cámara", boton: "Apagar"})) return;
+  pararDirecto(); accionCam(sn, "privacidad", true, b);
+}
+
+// ajustes de una cámara (y qué detecciones avisan)
+let DC_SN = null, DC_AJ = [];
+const TIPOS_ICONO = {"Persona": "🧍", "Persona desconocida": "❓", "Mascota": "🐾", "Movimiento": "〰️", "Timbre": "🔔", "Llanto": "👶", "Sonido": "🔊", "Alguien merodeando": "👀"};
+async function abrirAjustesCam(sn) {
+  const d = camPorSerial(sn); DC_SN = sn;
+  $("dcTitulo").textContent = d?.nombre || "Cámara"; $("dcSub").textContent = d?.modelo || "";
+  const tipos = d?.tipos_posibles || [], marcados = d?.tipos ?? tipos;
+  $("dcTipos").innerHTML = tipos.length ? `<label style="margin-top:12px">Avisarme de</label>
+    <div class="dias" style="flex-wrap:wrap; gap:6px">${tipos.map(t => `<label class="dia" style="width:auto; padding:0 10px">
+      <input type="checkbox" data-tipo="${esc(t)}" ${marcados.includes(t) ? "checked" : ""} onchange="guardarTiposCam()">${TIPOS_ICONO[t] || ""} ${esc(t)}</label>`).join("")}</div>
+    <div class="ayuda">Solo cuenta si «📷 Movimiento» está activado para esta cámara. Por ejemplo, solo personas para que no avise por el gato.</div>` : "";
+  $("dcAjustes").innerHTML = '<div class="vacio">Cargando…</div>';
+  $("dlgCamara").showModal();
+  try { DC_AJ = (await api("GET", "/api/camara/ajustes/" + encodeURIComponent(sn))).resultado; }
+  catch (e) { $("dcAjustes").innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; }
+  pintarAjustesCam();
+}
+function pintarAjustesCam() {
+  $("dcAjustes").innerHTML = `<label style="margin-top:14px">Ajustes de la cámara</label>` + DC_AJ.map(a => `<div class="ajc"><div><b>${esc(a.etiqueta)}</b>${a.ayuda ? `<div class="muted peq">${esc(a.ayuda)}</div>` : ""}</div>
+    ${a.tipo === "bool" ? `<input type="checkbox" ${a.valor ? "checked" : ""} aria-label="${esc(a.etiqueta)}" onchange="guardarAjusteCam('${a.clave}', this.checked, this)">`
+      : a.tipo === "sel" ? `<select onchange="guardarAjusteCam('${a.clave}', +this.value, this)">${a.opciones.map(o => `<option value="${o.v}" ${o.v === a.valor ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select>`
+      : `<span style="display:flex; align-items:center; gap:6px"><input type="number" min="${a.min}" max="${a.max}" value="${a.valor}" style="width:84px" onchange="guardarAjusteCam('${a.clave}', +this.value, this)"><span class="muted peq">${a.unidad === "sec" ? "s" : esc(a.unidad || "")}</span></span>`}</div>`).join("");
+}
+async function guardarAjusteCam(clave, valor, el) {
+  const card = $("dcAjustes"); el.disabled = true;
+  try {
+    await api("POST", "/api/admin/camara/ajuste", {serial: DC_SN, clave, valor});
+    const t0 = Date.now(); let ok = false;
+    while (Date.now() - t0 < 20000) {  // esperar a que la cámara confirme
+      await new Promise(r => setTimeout(r, 2000));
+      try { DC_AJ = (await api("GET", "/api/camara/ajustes/" + encodeURIComponent(DC_SN))).resultado; } catch (e) { continue; }
+      if (DC_AJ.find(a => a.clave === clave)?.valor === valor) { ok = true; break; }
+    }
+    pintarAjustesCam();
+    aviso(ok ? "✅ La cámara ha confirmado el cambio" : "⚠️ La cámara aún no lo confirma; vuelve a mirar en un rato.");
+  } catch (e) { aviso("⚠️ " + e.message); pintarAjustesCam(); }
+}
+async function guardarTiposCam() {
+  const tipos = [...document.querySelectorAll("#dcTipos [data-tipo]")].filter(x => x.checked).map(x => x.dataset.tipo);
+  try { await api("POST", "/api/admin/camara/asignar", {serial: DC_SN, tipos}); aviso("Guardado"); cargarCamara(null, true); }
+  catch (e) { aviso("⚠️ " + e.message); }
+}
+
+// cámaras y cerradura
+function pintarCamAuto() {
+  const cams = camsCuenta(), a = CONFIG?.camaras_auto || {}, modos = cams.find(d => d.modos?.length)?.modos || [];
+  const hayPriv = cams.some(d => d.privacidad), nuki = !soloCamara() && CONFIG?.nuki?.token_puesto;
+  $("cardCamAuto").classList.toggle("oculto", !(cams.length && nuki && (hayPriv || modos.length)));
+  const fila = (k, titulo, ayuda) => { const r = a[k] || {}; return `<div class="regla" style="margin-top:10px"><b>${titulo}</b> <span class="muted peq">— ${ayuda}</span>
+    <div class="regla-cuerpo" style="margin-top:8px">
+      ${hayPriv ? `<select data-ca="${k}-privacidad"><option value="">Cámaras: no tocar</option><option value="apagar" ${r.privacidad === "apagar" ? "selected" : ""}>🙈 Apagar las cámaras elegidas</option><option value="encender" ${r.privacidad === "encender" ? "selected" : ""}>👁 Encender las cámaras elegidas</option></select>` : ""}
+      ${modos.length ? `<select data-ca="${k}-modo"><option value="">Modo: no cambiar</option>${modos.map(m => `<option value="${m.v}" ${String(r.modo) === String(m.v) ? "selected" : ""}>Modo: ${esc(m.t)}</option>`).join("")}</select>` : ""}
+      ${k === "entrada" && secciones().length ? `<span class="muted peq" style="flex-basis:100%">Solo si entra alguien de: ${secciones().map(x => `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-ca-sec="${esc(x)}" ${(r.secciones || []).includes(x) ? "checked" : ""}>${esc(x)}</label>`).join(" ")} <span>(nada marcado = cualquiera)</span></span>` : ""}
+    </div></div>`; };
+  $("caCampos").innerHTML = fila("entrada", "🔓 Al entrar con un código", "alguien abre desde el teclado") +
+    fila("salida", "🔒 Al bloquear desde el teclado", "normalmente, al irse") +
+    (hayPriv ? `<label style="margin-top:12px">Cámaras que se apagan y encienden</label><div class="dias" style="flex-wrap:wrap; gap:6px">${cams.filter(d => d.privacidad).map(d => `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-ca-cam="${esc(d.serial)}" ${(a.camaras?.length ? a.camaras.includes(d.serial) : !d.predeterminada) ? "checked" : ""}>${esc(d.nombre)}</label>`).join("")}</div>
+      <div class="ayuda">Normalmente las de dentro. El modo se aplica a todas las cámaras de la casa.</div>` : "");
+  const activos = ["entrada", "salida"].filter(k => a[k]?.privacidad || a[k]?.modo !== undefined && a[k]?.modo !== "").length;
+  $("caResumen").textContent = activos ? `${activos} activa${activos === 1 ? "" : "s"}` : "";
+}
+async function guardarCamAuto(b) {
+  const v = k => document.querySelector(`[data-ca="${k}"]`)?.value || "";
+  const datos = {entrada: {privacidad: v("entrada-privacidad"), modo: v("entrada-modo"), secciones: [...document.querySelectorAll("[data-ca-sec]")].filter(x => x.checked).map(x => x.dataset.caSec)},
+                 salida: {privacidad: v("salida-privacidad"), modo: v("salida-modo")},
+                 camaras: [...document.querySelectorAll("[data-ca-cam]")].filter(x => x.checked).map(x => x.dataset.caCam)};
+  await conBoton(b, async () => { await api("POST", "/api/camaras/auto", datos); aviso("Guardado"); await cargarAjustes(); pintarCamAuto(); });
+}
+
+// espacio
+const MB = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : (n / 1e6).toFixed(0) + " MB";
+async function cargarCamDisco() {
+  let d; try { d = (await api("GET", "/api/admin/camara/disco")).resultado; } catch (e) { $("cdCuerpo").innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; }
+  const total = Object.values(d.casas).reduce((t, c) => t + c.fotos + c.clips, 0);
+  $("cdResumen").textContent = MB(total);
+  $("cdCuerpo").innerHTML = `<p class="muted peq" style="margin:6px 0 8px">Fotos y clips que guarda el panel (los de los avisos y las entradas). Las grabaciones de la tarjeta de cada cámara no cuentan aquí.</p>
+    ${Object.entries(d.casas).map(([c, x]) => `<div class="ajc"><div><b>${esc(d.nombres[c] || c)}</b><div class="muted peq">fotos ${MB(x.fotos)} · clips ${MB(x.clips)}</div></div><b>${MB(x.fotos + x.clips)}</b></div>`).join("") || '<div class="muted peq">Todavía no hay nada guardado.</div>'}
+    <div class="muted peq" style="margin-top:8px">Disco del servidor: ${MB(d.libre)} libres de ${MB(d.total)}</div>
+    <div class="disco-barra"><i style="width:${Math.round(100 * (1 - d.libre / d.total))}%"></i></div>
+    <div class="ajc"><div><b>Guardar fotos y clips durante</b><div class="muted peq">Lo más antiguo se borra solo.</div></div>
+      <select onchange="guardarDiasCam(this)">${[7, 15, 30, 60, 90, 180].map(n => `<option value="${n}" ${n === d.dias ? "selected" : ""}>${n} días</option>`).join("")}${[7, 15, 30, 60, 90, 180].includes(d.dias) ? "" : `<option selected>${d.dias} días</option>`}</select></div>
+    ${d.sd?.length ? `<label style="margin-top:12px">Tarjeta de cada cámara</label>${d.sd.map(x => `<div class="ajc"><div><b>${esc(x.nombre)}</b><div class="disco-barra" style="width:160px; margin:4px 0 0"><i style="width:${Math.round(100 * (1 - x.libre_mb / x.total_mb))}%"></i></div></div><span class="muted peq">${MB(x.libre_mb * 1e6)} libres de ${MB(x.total_mb * 1e6)}</span></div>`).join("")}
+      <div class="ayuda">Es normal que estén casi llenas: con grabación continua, la cámara borra sola lo más antiguo.</div>` : ""}`;
+}
+async function guardarDiasCam(sel) {
+  try { await api("POST", "/api/admin/camara/dias", {dias: +sel.value}); aviso("Guardado"); } catch (e) { aviso("⚠️ " + e.message); }
+}
+function aplicarCamaras() {
+  const hay = camsCuenta().length > 0, admin = YO?.rol === "admin";
+  if (CONFIG) pintarCamAuto();
+  $("cardCamDisco").classList.toggle("oculto", !(admin && (CAMARA?.dispositivos || []).length));
+  // programar: también para casas solo con cámaras
+  const nuki = !!CAP?.nuki && !soloCamara();
+  $("cardProgramas").dataset.grupo = nuki ? "nuki" : "camaras";
+  $("cardProgramas").classList.toggle("oculto", !(nuki || hay));
+}
+
 function conCsrf(u) { return u + (u.includes("?") ? "&" : "?") + "csrf=" + encodeURIComponent(YO?.csrf || ""); }
 function urlCam(nombre) { return conCsrf("/api/camara/archivo/" + encodeURIComponent(nombre)); }
 function pintarCamara() {
@@ -2296,6 +2507,10 @@ function abrirEvento(id) {
     + (!e.clip && !e.foto ? '<div class="vacio">Sin foto ni clip.</div>' : "")
     + (!e.clip && e.foto && Date.now() - new Date(e.hora) < 120000 ? '<div class="ayuda">El clip tarda unos segundos en estar listo; pulsa Actualizar.</div>' : "");
   $("dlgEvento").showModal();
+}
+function verFotoEntrada(f, cuando) {
+  $("evTitulo").textContent = "Foto de la cámara"; $("evTexto").textContent = cuando;
+  $("evMedia").innerHTML = `<img src="${urlCam(f)}" alt="Foto">`; $("dlgEvento").showModal();
 }
 function cerrarEvento() { $("evMedia").innerHTML = ""; $("dlgEvento").close(); if (location.hash.startsWith("#evento=")) history.replaceState(null, "", location.pathname); }
 async function abrirEventoDelEnlace() {
@@ -2336,6 +2551,7 @@ function pintarEufy() {
         <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
           <label class="dia" style="width:auto; padding:0 10px" title="Foto y clip de los avisos de la puerta"><input type="radio" name="campred-${esc(x.cuenta)}" ${x.predeterminada ? "checked" : ""} onchange="configCamara('${esc(x.serial)}', {predeterminada: true})">⭐ Predeterminada</label>
           <label class="dia" style="width:auto; padding:0 10px" title="Avisar de movimiento o timbre"><input type="checkbox" ${x.movimiento ? "checked" : ""} onchange="configCamara('${esc(x.serial)}', {movimiento: this.checked})">📷 Movimiento</label>
+          ${x.n_ajustes || x.tipos_posibles?.length ? `<button type="button" onclick="abrirAjustesCam('${esc(x.serial)}')">⚙️ Ajustes</button>` : ""}
           <select onchange="configCamara('${esc(x.serial)}', {cuenta: this.value})">${CAM_CUENTAS.map(k => `<option value="${esc(k.id)}" ${k.id === x.cuenta ? "selected" : ""}>${esc(k.nombre)}</option>`).join("")}<option value="${esc(c.sin_casa)}" ${x.cuenta === c.sin_casa ? "selected" : ""}>Sin casa (oculta)</option></select>
         </span></div>`).join("");
   clearTimeout(pintarEufy._t);

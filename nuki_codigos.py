@@ -874,7 +874,7 @@ def traducir_registro(config, eventos):
         else:
             sentido = ACCIONES_NUKI.get(accion, f"Acción {accion}")
         salida.append({
-            "fecha": e.get("date"), "quien": quien, "tipo_persona": tipo_persona,
+            "id": e.get("id"), "teclado": teclado, "fecha": e.get("date"), "quien": quien, "tipo_persona": tipo_persona,
             "persona_id": id_persona, "sentido": sentido,
             "accion": ACCIONES_NUKI.get(accion, f"Acción {accion}"),
             "origen": ORIGENES_NUKI.get(origen, f"Origen {origen}"),

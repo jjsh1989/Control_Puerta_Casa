@@ -218,7 +218,13 @@ ACCIONES_PROG = {
     "abrir": (3, "Abrir la puerta"),
     "lockngo": (4, "Lock'n'Go"),
     "portal": (3, "Abrir el portal (Opener)"),
+    "camaras_apagar": (None, "Apagar las cámaras"),
+    "camaras_encender": (None, "Encender las cámaras"),
+    "camaras_fuera": (0, "Cámaras en modo «Fuera de casa»"),
+    "camaras_casa": (1, "Cámaras en modo «En casa»"),
+    "camaras_desactivar": (63, "Cámaras en modo «Desactivado»"),
 }
+ACCIONES_NUKI = ("bloquear", "desbloquear", "abrir", "lockngo", "portal")
 MARGEN = timedelta(minutes=5)  # si el servidor estaba apagado, no se hace una acción con más retraso
 
 
@@ -232,6 +238,13 @@ def validar_programaciones(lista, cfg):
             raise RuntimeError("Acción programada no válida.")
         if accion == "portal" and not cfg["nuki"].get("opener_id"):
             raise RuntimeError("Esta casa no tiene Opener.")
+        if accion in ACCIONES_NUKI and not cfg["nuki"].get("token"):
+            raise RuntimeError("Esta casa no tiene cerradura Nuki.")
+        if accion.startswith("camaras_"):
+            import camara
+            import cuentas
+            if not camara.camaras_de(cuentas.cuenta_actual()):
+                raise RuntimeError("Esta casa no tiene cámaras conectadas.")
         dias = sorted({int(x) % 7 for x in (p.get("dias") or [])})
         if not dias:
             raise RuntimeError("Cada programación necesita al menos un día.")
@@ -252,8 +265,7 @@ def texto_prog(p):
 def revisar_programaciones(cfg, avisar):
     """Se llama cada minuto. avisar(texto) manda el aviso por los canales de la casa."""
     progs = [p for p in cfg.get("programaciones") or [] if p.get("activa")]
-    n = cfg.get("nuki") or {}
-    if not progs or not n.get("token"):
+    if not progs:
         return
     ahora = datetime.now().astimezone()
     estado = nk.cargar_json(nk.ruta_estado(), {})
@@ -287,6 +299,19 @@ def revisar_programaciones(cfg, avisar):
 
 
 def ejecutar(cfg, p):
+    if p["accion"].startswith("camaras_"):
+        import camara
+        import cuentas
+        num, nombre = ACCIONES_PROG[p["accion"]]
+        auto = cfg.get("camaras_auto") or {}
+        if p["accion"] in ("camaras_apagar", "camaras_encender"):
+            hechos, fallos = camara.aplicar_casa(cuentas.cuenta_actual(), privacidad=p["accion"] == "camaras_apagar",
+                                                 solo=auto.get("camaras") or None, quien="programado")
+        else:
+            hechos, fallos = camara.aplicar_casa(cuentas.cuenta_actual(), modo=num, quien="programado")
+        if fallos:
+            return f"⚠️ {nombre} (programado a las {p['hora']}): {'; '.join(fallos)}"
+        return f"⏰ {nombre}: hecho (programado a las {p['hora']})." if hechos else ""
     n = cfg["nuki"]
     nuki = nk.Nuki(n["token"])
     num, nombre = ACCIONES_PROG[p["accion"]]

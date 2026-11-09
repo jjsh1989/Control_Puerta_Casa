@@ -27,6 +27,7 @@ TIPOS = {
     "bloqueo": "🔒 Se ha bloqueado la cerradura",
     "desconectada": "📡 La cerradura no responde",
     "programada": "⏰ Acción programada",
+    "camara": "📷 Cámaras sin conexión",
 }
 ESTADOS_CERROJO = {0: "sin calibrar", 1: "bloqueada", 2: "desbloqueando…", 3: "desbloqueada", 4: "bloqueando…",
                    5: "pestillo abierto", 6: "desbloqueada (lock'n'go)", 7: "abriendo…", 254: "atascada", 255: "desconocido"}
@@ -46,6 +47,7 @@ INICIAL = {
         "atascada": {**REGLA_INICIAL, "activo": True, "siempre": True},
         "bloqueo": {**REGLA_INICIAL, "siempre": False},
         "desconectada": {**REGLA_INICIAL, "activo": True, "siempre": True, "minutos": 15},
+        "camara": {**REGLA_INICIAL, "activo": True, "siempre": True, "minutos": 15},
     },
 }
 
@@ -130,7 +132,7 @@ def aviso_si_toca(cfg, tipo, detalle, momento):
             hay_camara = bool(camara.camara_puerta(cfg))
         except Exception:
             hay_camara = False
-        if hay_camara and tipo not in ("movimiento", "desconectada"):
+        if hay_camara and tipo not in ("movimiento", "desconectada", "camara"):
             # con cámara: foto reciente y, en los avisos graves, un clip de unos segundos
             camara.enviar_con_camara(cfg, tipo, detalle, momento,
                                      con_clip=regla.get("clip", tipo != "incorrecto"))
@@ -158,7 +160,13 @@ def _clave(e):
 def revisar(cfg):
     """Lee los últimos eventos de la cerradura y avisa de los nuevos. Devuelve cuántos avisos envió."""
     a = ajustes(cfg)
-    if not any(r["activo"] for t, r in a["reglas"].items() if t != "movimiento"):
+    try:
+        import camara
+        sn_puerta = camara.camara_puerta(cfg)
+    except Exception:
+        camara, sn_puerta = None, None
+    if not any(r["activo"] for t, r in a["reglas"].items() if t not in ("movimiento", "camara")) \
+            and not cfg.get("camaras_auto") and not sn_puerta:
         return 0
     token, sid = cfg["nuki"].get("token"), cfg["nuki"].get("smartlock_id")
     if not (token and sid):
@@ -186,6 +194,19 @@ def revisar(cfg):
             local = cuando.astimezone()
             t = nk.traducir_registro(cfg, [ev])[0]
             accion, estado_nuki = ev.get("action"), ev.get("state", 0)
+            teclado = ev.get("trigger") == 255 or ev.get("source") == 1
+            if camara and teclado:
+                # foto de quien usa el teclado (entradas, cierres e intentos fallidos)
+                if sn_puerta:
+                    camara.foto_entrada(cuentas.cuenta_actual(), ev.get("id"), cuando, sn_puerta)
+                # cámaras y cerradura: al entrar o salir por el teclado
+                momento_auto = None
+                if estado_nuki == 0 and accion in (1, 3, 5) and t["tipo_persona"] != "desactivado":
+                    momento_auto = "entrada"
+                elif estado_nuki == 0 and accion in (2, 4):
+                    momento_auto = "salida"
+                if momento_auto:
+                    automatizar_camaras(cfg, momento_auto, camara, t)
             if t["tipo_persona"] == "desactivado":
                 enviados += aviso_si_toca(cfg, "desactivado", f"{t['quien']} · {t['origen']}", local)
             elif estado_nuki == 224:
@@ -267,6 +288,33 @@ def _revisar_estado(cfg, a, sid, token, e):
     else:
         e.pop("atascada_avisada", None)
     return enviados
+
+
+def automatizar_camaras(cfg, momento, camara, t=None):
+    """cfg["camaras_auto"] = {"entrada": {"modo": 1, "privacidad": "apagar"}, "salida": {...}, "camaras": [seriales]}"""
+    auto = cfg.get("camaras_auto") or {}
+    regla = auto.get(momento) or {}
+    priv = {"apagar": True, "encender": False}.get(regla.get("privacidad"))
+    modo = regla.get("modo")
+    modo = int(modo) if str(modo).lstrip("-").isdigit() else None
+    if priv is None and modo is None:
+        return
+    secciones = regla.get("secciones") or []
+    if secciones and momento == "entrada":
+        persona = next((d for d in cfg.get("destinatarios", []) if t and d["id"] == t.get("persona_id")), None)
+        if not persona or (persona.get("seccion") or "") not in secciones:
+            return  # p. ej. entra la limpieza: no se tocan las cámaras
+    cuenta = cuentas.cuenta_actual()
+    solo = auto.get("camaras") or None
+    quien = "al entrar por el teclado" if momento == "entrada" else "al salir (bloqueo desde el teclado)"
+
+    def hacer():
+        # la privacidad solo a las cámaras elegidas; el modo, a todas las de la casa
+        if priv is not None:
+            camara.aplicar_casa(cuenta, privacidad=priv, solo=solo, quien=quien)
+        if modo is not None:
+            camara.aplicar_casa(cuenta, modo=modo, quien=quien)
+    threading.Thread(target=hacer, daemon=True).start()
 
 
 def _sin_respuesta(cfg, a, e, motivo):

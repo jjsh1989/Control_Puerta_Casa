@@ -35,7 +35,12 @@ Pensado para funcionar 24 h en un servidor doméstico (Proxmox + Docker) y entra
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)
 - ⭐ Cámara predeterminada por casa, 📷 avisos por movimiento o timbre, y cada cámara asignada a su casa (o oculta).
-- Pestaña **Cámara**: **directo** ordenado por casas y galería de avisos con foto y vídeo (se guardan 30 días).
+- Pestaña **Cámara**: **directo** ordenado por casas y galería de avisos con foto y vídeo (los días que se guardan se eligen en Ajustes, con el espacio usado a la vista).
+- **Controles en el directo**, solo los que admite cada modelo: **girar** (mantén pulsada la flecha para seguir girando), **sirena**, **foco**, **apagar la cámara** (modo privacidad) y **modo** (En casa, Fuera, Programado, Desactivado).
+- **Ajustes de cada cámara** (sensibilidad, grabación, luces, sonido…) y **qué detecciones avisan** (personas, mascotas, llanto, sonido, movimiento).
+- **Cámaras y cerradura**: al entrar con un código, apagar las cámaras de dentro o cambiar el modo; al bloquear desde el teclado, encenderlas o poner «Fuera». También se pueden **programar** por horas.
+- **Foto de cada entrada** con el teclado en la pestaña Entradas, y **aviso** si una cámara se queda sin conexión o con poca batería.
+- Las grabaciones de la tarjeta SD de la cámara **no** se pueden ver: el puente de Eufy no permite consultarlas.
 
 **Seguridad**
 - El panel solo escucha dentro del servidor; desde fuera solo se entra por Tailscale con HTTPS.

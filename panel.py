@@ -683,7 +683,12 @@ class Manejador(BaseHTTPRequestHandler):
                 if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
                     raise RuntimeError("Configura primero el token y la cerradura en Ajustes.")
                 eventos = nuki.registro(cfg["nuki"]["smartlock_id"], min(int(params.get("limite", 200)), 1000))
-                return self._ok(nk.traducir_registro(cfg, eventos))
+                filas = nk.traducir_registro(cfg, eventos)
+                cuenta = cuentas.cuenta_actual()
+                for f in filas:  # foto de la cámara de la puerta en cada uso del teclado
+                    if f.get("teclado") and f.get("id"):
+                        f["foto"] = camara.foto_de_entrada(cuenta, f["id"])
+                return self._ok(filas)
             if ruta == "/api/bateria":
                 datos_bat = None
                 error = ""
@@ -739,6 +744,14 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._ok(nuki_extra.leer_ajustes(cfg))
             if ruta == "/api/admin/nuki/accesos" and admin:
                 return self._ok(nuki_extra.accesos(cfg))
+            m = re.fullmatch(r"/api/camara/ajustes/(\w+)", ruta)
+            if m and admin:
+                return self._ok(camara.leer_ajustes(m.group(1)))
+            if ruta == "/api/admin/camara/disco" and admin:
+                d = camara.uso_disco()
+                d["sd"] = [{"nombre": x["nombre"], **(x.get("sd") or {})} for x in camara.estado()["dispositivos"] if x.get("sd")]
+                d["nombres"] = {c["id"]: c["nombre"] for c in cuentas.listar_cuentas()}
+                return self._ok(d)
             if ruta == "/api/camara":
                 e = camara.estado()
                 cuenta = cuentas.cuenta_actual()
@@ -892,6 +905,27 @@ class Manejador(BaseHTTPRequestHandler):
                 nuki.accion(cfg["nuki"]["smartlock_id"], n)
             nk.registrar(texto, s.get("nombre") or s["usuario"], "")
             return self._ok()
+        if ruta == "/api/camara/accion":
+            sn = datos.get("serial")
+            if sn not in camara.CLIENTE.dispositivos or (not admin and camara.cuenta_de(sn) != cuentas.cuenta_actual()):
+                raise RuntimeError("Cámara no encontrada en esta casa.")
+            texto = camara.accion(sn, datos.get("que"), datos.get("valor"))
+            if texto:
+                nk.registrar("Cámara", s.get("nombre") or s["usuario"], texto)
+            return self._ok({"texto": texto})
+        if ruta == "/api/camaras/auto":
+            def limpia(r):
+                r = r or {}
+                modo = r.get("modo")
+                return {"modo": int(modo) if str(modo).lstrip("-").isdigit() else "",
+                        "privacidad": r.get("privacidad") if r.get("privacidad") in ("apagar", "encender") else "",
+                        "secciones": [str(x)[:40] for x in (r.get("secciones") or [])][:20]}
+            propias = set(camara.camaras_de(cuentas.cuenta_actual()))
+            cfg["camaras_auto"] = {"entrada": limpia(datos.get("entrada")), "salida": limpia(datos.get("salida")),
+                                   "camaras": [x for x in (datos.get("camaras") or []) if x in propias]}
+            nk.guardar_config(cfg)
+            nk.registrar("Cámaras y cerradura", s.get("nombre") or s["usuario"], json.dumps(cfg["camaras_auto"], ensure_ascii=False))
+            return self._ok()
         if ruta == "/api/programaciones":
             cfg["programaciones"] = nuki_extra.validar_programaciones(datos.get("lista"), cfg)
             nk.guardar_config(cfg)
@@ -966,9 +1000,22 @@ class Manejador(BaseHTTPRequestHandler):
                 raise RuntimeError("La cuenta no existe.")
             if datos.get("serial") not in camara.CLIENTE.dispositivos:
                 raise RuntimeError("Cámara no encontrada.")
-            camara.asignar(datos["serial"], datos.get("cuenta"), datos.get("predeterminada"), datos.get("movimiento"))
+            camara.asignar(datos["serial"], datos.get("cuenta"), datos.get("predeterminada"), datos.get("movimiento"),
+                           datos.get("tipos"))
             nk.registrar("Cámara configurada", camara.CLIENTE.dispositivos[datos["serial"]]["nombre"],
-                         ", ".join(f"{k}: {datos[k]}" for k in ("cuenta", "predeterminada", "movimiento") if k in datos))
+                         ", ".join(f"{k}: {datos[k]}" for k in ("cuenta", "predeterminada", "movimiento", "tipos") if k in datos))
+            return self._ok()
+        if ruta == "/api/admin/camara/ajuste":
+            sn = datos.get("serial")
+            if sn not in camara.CLIENTE.dispositivos:
+                raise RuntimeError("Cámara no encontrada.")
+            v = camara.guardar_ajuste(sn, datos.get("clave"), datos.get("valor"))
+            etq = next((e for k, e, _ in camara.AJUSTES_CAM if k == datos.get("clave")), datos.get("clave"))
+            nk.registrar("Ajuste de cámara", camara.CLIENTE.dispositivos[sn]["nombre"], f"{etq}: {v}")
+            return self._ok()
+        if ruta == "/api/admin/camara/dias":
+            camara.poner_dias_guardar(datos.get("dias"))
+            nk.registrar("Fotos y clips", "", f"Se guardan {camara.dias_guardar()} días")
             return self._ok()
         if ruta == "/api/admin/telegram":
             if datos.get("borrar"):
@@ -1271,6 +1318,7 @@ def main():
     telegram.Escucha().start()
     camara.CLIENTE.start()
     camara.Limpieza().start()
+    camara.VigilaCamaras().start()
     servidor = ThreadingHTTPServer((ESCUCHAR, PUERTO), Manejador)
     print(f"Panel escuchando en http://{ESCUCHAR}:{PUERTO}", flush=True)
     try:

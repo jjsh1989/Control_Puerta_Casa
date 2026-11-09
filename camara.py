@@ -36,7 +36,54 @@ EVENTOS = {
     "motion detected": "Movimiento", "radar motion detected": "Movimiento",
     "person detected": "Persona", "stranger person detected": "Persona desconocida",
     "someone loitering": "Alguien merodeando", "rings": "Timbre",
+    "pet detected": "Mascota", "crying detected": "Llanto", "sound detected": "Sonido",
 }
+# qué propiedad indica que una cámara sabe detectar cada tipo (para ofrecer solo los que tiene)
+TIPOS_DETECCION = [("Persona", "personDetected"), ("Persona desconocida", "strangerPersonDetected"),
+                   ("Mascota", "petDetected"), ("Movimiento", "motionDetected"), ("Timbre", "ringing"),
+                   ("Llanto", "cryingDetected"), ("Sonido", "soundDetected"), ("Alguien merodeando", "someoneLoitering")]
+
+# ajustes que el panel sabe mostrar (solo salen los que tenga cada cámara y se puedan cambiar)
+AJUSTES_CAM = [
+    ("motionDetection", "Detección de movimiento", ""),
+    ("motionDetectionType", "Qué detecta", ""),
+    ("motionDetectionSensitivity", "Sensibilidad", "1 = poca, 5 = mucha"),
+    ("motionTracking", "Seguir el movimiento", "La cámara gira sola para seguir lo que se mueve."),
+    ("petDetection", "Detectar mascotas", ""),
+    ("soundDetection", "Detectar sonido", ""),
+    ("soundDetectionType", "Tipo de sonido", ""),
+    ("soundDetectionSensitivity", "Sensibilidad al sonido", "1 = poca, 5 = mucha"),
+    ("continuousRecording", "Grabación continua en la tarjeta", "Si no, solo graba cuando detecta algo."),
+    ("recordingClipLength", "Duración de cada grabación", ""),
+    ("videoRecordingQuality", "Calidad de grabación", ""),
+    ("videoStreamingQuality", "Calidad del directo", ""),
+    ("autoNightvision", "Visión nocturna automática", ""),
+    ("statusLed", "Luz de estado", ""),
+    ("rotationSpeed", "Velocidad de giro", ""),
+    ("imageMirrored", "Imagen invertida", "Para cámaras colgadas del techo."),
+    ("lightSettingsEnable", "Foco activado", ""),
+    ("lightSettingsBrightnessManual", "Brillo del foco", ""),
+    ("lightSettingsMotionTriggered", "Encender el foco con movimiento", ""),
+    ("lightSettingsBrightnessMotion", "Brillo del foco con movimiento", ""),
+    ("lightSettingsMotionTriggeredTimer", "Tiempo encendido tras el movimiento", ""),
+    ("microphone", "Micrófono", ""),
+    ("audioRecording", "Grabar sonido", ""),
+    ("speakerVolume", "Volumen del altavoz", ""),
+    ("watermark", "Marca en la imagen", ""),
+]
+TRADUCCIONES = {
+    "Person": "Personas", "Pet": "Mascotas", "Person and Pet": "Personas y mascotas",
+    "All other motions": "Otros movimientos", "Person and all other motions": "Personas y otros movimientos",
+    "Pet and all other motions": "Mascotas y otros movimientos", "Person, Pet and all other motions": "Todo",
+    "Humans only": "Solo personas", "All motions": "Todo movimiento", "Crying": "Llanto", "All Sounds": "Todos los sonidos",
+    "Auto": "Automática", "Low": "Baja", "Medium": "Media", "High": "Alta", "Min": "Mínima", "Max": "Máxima",
+    "Timestamp": "Fecha y hora", "Timestamp and Logo": "Fecha, hora y logo", "Off": "Nada",
+    "30 sec.": "30 s", "1 min.": "1 min", "3 min.": "3 min", "5 min.": "5 min", "15 min.": "15 min",
+    "Away": "Fuera de casa", "Home": "En casa", "Schedule": "Según horario de Eufy", "Disarmed": "Desactivado",
+    "Custom 1": "Personalizado 1", "Custom 2": "Personalizado 2", "Custom 3": "Personalizado 3", "Geofencing": "Por ubicación",
+}
+MODOS_OFRECIDOS = ("1", "0", "63", "2")  # En casa, Fuera, Desactivado, Según horario
+DIRECCIONES = {"izquierda": 1, "derecha": 2, "arriba": 3, "abajo": 4}
 
 
 def _bytes(buf):
@@ -98,14 +145,14 @@ def ajustes_sistema():
 def ajustes_camara(serial):
     d = (ajustes_sistema().get("dispositivos") or {}).get(serial) or {}
     return {"cuenta": d.get("cuenta", cuentas.CUENTA_PRINCIPAL), "predeterminada": bool(d.get("predeterminada")),
-            "movimiento": bool(d.get("movimiento"))}
+            "movimiento": bool(d.get("movimiento")), "tipos": d.get("tipos")}  # tipos None = todos
 
 
 def cuenta_de(serial):
     return ajustes_camara(serial)["cuenta"]
 
 
-def asignar(serial, cuenta=None, predeterminada=None, movimiento=None):
+def asignar(serial, cuenta=None, predeterminada=None, movimiento=None, tipos=None):
     s = cuentas.leer_sistema()
     disp = s.setdefault("eufy", {}).setdefault("dispositivos", {})
     d = disp.setdefault(serial, {"cuenta": cuentas.CUENTA_PRINCIPAL})
@@ -114,6 +161,9 @@ def asignar(serial, cuenta=None, predeterminada=None, movimiento=None):
         d["predeterminada"] = False  # al cambiar de casa deja de ser la predeterminada de la anterior
     if movimiento is not None:
         d["movimiento"] = bool(movimiento)
+    if tipos is not None:
+        validos = {t for t, _ in TIPOS_DETECCION}
+        d["tipos"] = sorted({t for t in tipos if t in validos})
     if predeterminada is not None:
         if predeterminada:  # solo una predeterminada por casa
             for sn, otra in disp.items():
@@ -188,12 +238,46 @@ def ruta_archivo(cuenta, nombre):
         raise RuntimeError("Archivo no válido.")
     ruta = carpeta(cuenta) / nombre
     if not ruta.is_file():
-        raise RuntimeError("Ese archivo ya no existe (se borran a los 30 días).")
+        raise RuntimeError(f"Ese archivo ya no existe (se borran a los {dias_guardar()} días).")
     return ruta
 
 
+def dias_guardar():
+    try:
+        return max(3, min(365, int(ajustes_sistema().get("dias_guardar") or DIAS_GUARDAR)))
+    except (TypeError, ValueError):
+        return DIAS_GUARDAR
+
+
+def poner_dias_guardar(dias):
+    dias = int(dias)
+    if not 3 <= dias <= 365:
+        raise RuntimeError("Entre 3 y 365 días.")
+    s = cuentas.leer_sistema()
+    s.setdefault("eufy", {})["dias_guardar"] = dias
+    cuentas.guardar_sistema(s)
+
+
+def uso_disco():
+    """Lo que ocupan las fotos y clips guardados por el panel, por casa."""
+    salida = {}
+    if CARPETA_MEDIA.exists():
+        for c in CARPETA_MEDIA.iterdir():
+            if c.is_dir():
+                fotos = clips = 0
+                for f in c.iterdir():
+                    if f.suffix == ".jpg":
+                        fotos += f.stat().st_size
+                    elif f.suffix == ".mp4":
+                        clips += f.stat().st_size
+                salida[c.name] = {"fotos": fotos, "clips": clips}
+    libre = shutil.disk_usage(CARPETA_MEDIA if CARPETA_MEDIA.exists() else cuentas.DATOS)
+    return {"casas": salida, "libre": libre.free, "total": libre.total, "dias": dias_guardar()}
+
+
 def limpiar_antiguos():
-    limite = time.time() - DIAS_GUARDAR * 86400
+    DIAS = dias_guardar()
+    limite = time.time() - DIAS * 86400
     if not CARPETA_MEDIA.exists():
         return
     for c in CARPETA_MEDIA.iterdir():
@@ -204,7 +288,7 @@ def limpiar_antiguos():
                 f.unlink(missing_ok=True)
         ruta = c / "eventos.jsonl"
         if ruta.exists():
-            corte = (datetime.now().astimezone() - timedelta(days=DIAS_GUARDAR)).isoformat()
+            corte = (datetime.now().astimezone() - timedelta(days=DIAS)).isoformat()
             vivas = []
             for l in ruta.read_text(encoding="utf-8").splitlines():
                 try:
@@ -233,6 +317,12 @@ class Cliente(threading.Thread):
         self.captcha = None             # {"id", "imagen"}
         self.pide_codigo = False
         self.dispositivos = {}          # serial -> {nombre, modelo, camara}
+        self.props = {}                 # serial -> propiedades actuales (sin la foto)
+        self.meta = {}                  # serial -> metadatos de propiedades (tipo, si se puede cambiar, opciones…)
+        self.ordenes = {}               # serial -> órdenes que admite
+        self.estacion_de = {}           # serial cámara -> serial de su estación (base)
+        self.estaciones = {}            # serial estación -> propiedades
+        self.meta_est = {}              # serial estación -> metadatos
         self.pendientes = {}            # messageId -> [Event, resultado]
         self.fotos = {}                 # serial -> (momento, bytes)
         self.foto_nueva = threading.Condition()
@@ -315,6 +405,13 @@ class Cliente(threading.Thread):
                 p = ((m.get("result") or {}).get("properties")) or {}
                 sn = ident.split(":", 1)[1]
                 nuevo = sn not in self.dispositivos
+                self.props[sn] = {k: v for k, v in p.items() if k != "picture"}
+                est = p.get("stationSerialNumber") or sn
+                self.estacion_de[sn] = est
+                self._enviar({"messageId": f"_meta:{sn}", "command": "device.get_properties_metadata", "serialNumber": sn})
+                self._enviar({"messageId": f"_cmds:{sn}", "command": "device.get_commands", "serialNumber": sn})
+                self._enviar({"messageId": f"_eprops:{est}", "command": "station.get_properties", "serialNumber": est})
+                self._enviar({"messageId": f"_emeta:{est}", "command": "station.get_properties_metadata", "serialNumber": est})
                 self.dispositivos[sn] = {"nombre": p.get("name") or sn, "modelo": p.get("model", ""),
                                          "camara": True, "bateria": p.get("battery")}
                 if nuevo:
@@ -322,6 +419,17 @@ class Cliente(threading.Thread):
                 foto = _bytes((p.get("picture") or {}).get("data"))
                 if foto and sn not in self.fotos:
                     self.fotos[sn] = (0, foto)
+            elif ident and ident.split(":", 1)[0] in ("_meta", "_cmds", "_eprops", "_emeta") and m.get("success"):
+                que, sn = ident.split(":", 1)
+                r = m.get("result") or {}
+                if que == "_meta":
+                    self.meta[sn] = r.get("properties") or {}
+                elif que == "_cmds":
+                    self.ordenes[sn] = r.get("commands") or []
+                elif que == "_eprops":
+                    self.estaciones[sn] = {k: v for k, v in (r.get("properties") or {}).items() if k not in ("lanIpAddress", "macAddress")}
+                else:
+                    self.meta_est[sn] = r.get("properties") or {}
             elif ident in self.pendientes:
                 self.pendientes[ident][1] = m
                 self.pendientes[ident][0].set()
@@ -343,9 +451,20 @@ class Cliente(threading.Thread):
             elif nombre == "disconnected":
                 self.driver = False
             return
+        if origen == "station":
+            est = e.get("serialNumber")
+            if nombre == "property changed" and est in self.estaciones:
+                self.estaciones[est][e.get("name")] = e.get("value")
+            elif nombre == "guard mode changed" and est in self.estaciones:
+                self.estaciones[est]["guardMode"] = e.get("guardMode")
+            elif nombre == "current mode changed" and est in self.estaciones:
+                self.estaciones[est]["currentMode"] = e.get("currentMode")
+            return
         if origen != "device":
             return
         sn = e.get("serialNumber")
+        if nombre == "property changed" and sn in self.props and e.get("name") != "picture":
+            self.props[sn][e.get("name")] = e.get("value")
         if nombre == "property changed" and e.get("name") == "picture":
             foto = _bytes((e.get("value") or {}).get("data"))
             if foto:
@@ -506,8 +625,11 @@ class Cliente(threading.Thread):
         import alertas
         momento = datetime.now().astimezone()
         cuenta = cuenta_de(sn)
-        if not ajustes_camara(sn)["movimiento"]:
+        aj = ajustes_camara(sn)
+        if not aj["movimiento"]:
             return  # esta cámara no avisa de movimiento (se elige en Ajustes → Cámara Eufy)
+        if aj["tipos"] is not None and que not in aj["tipos"]:
+            return  # ese tipo de detección no interesa (p. ej. solo personas)
         nombre_cam = self.dispositivos.get(sn, {}).get("nombre", sn)
         ident = momento.strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(2)
         foto = self.esperar_foto(sn, time.time())
@@ -610,7 +732,7 @@ def estado():
         "usuario": a.get("usuario", ""), "credenciales": credenciales_puestas(),
         "conectado": c.conectado, "sesion": c.driver, "error": c.error,
         "captcha": c.captcha, "pide_codigo": c.pide_codigo,
-        "dispositivos": [{"serial": sn, **d, **ajustes_camara(sn)} for sn, d in c.dispositivos.items()],
+        "dispositivos": [{"serial": sn, **d, **ajustes_camara(sn), **capacidades(sn)} for sn, d in c.dispositivos.items()],
         "sin_casa": SIN_CASA,
     }
 
@@ -626,3 +748,224 @@ class Limpieza(threading.Thread):
             except Exception as e:
                 nk.log(f"Cámara: limpieza ({e})")
             time.sleep(6 * 3600)
+
+
+# ---------------------------------------------------------------- lo que sabe hacer cada cámara
+
+def _escribible(sn, prop):
+    m = CLIENTE.meta.get(sn, {}).get(prop)
+    return bool(m and m.get("writeable")) and prop in CLIENTE.props.get(sn, {})
+
+
+def _tr(t):
+    return TRADUCCIONES.get(str(t), str(t))
+
+
+def capacidades(sn):
+    c, p, o = CLIENTE, CLIENTE.props.get(sn, {}), CLIENTE.ordenes.get(sn, [])
+    est = c.estacion_de.get(sn, sn)
+    ep, em = c.estaciones.get(est, {}), c.meta_est.get(est, {}).get("guardMode") or {}
+    modos = [{"v": int(k), "t": _tr(v)} for k, v in (em.get("states") or {}).items() if k in MODOS_OFRECIDOS] \
+        if em.get("writeable") else []
+    sd = None
+    if ep.get("sdCapacity"):
+        sd = {"total_mb": ep.get("sdCapacity"), "libre_mb": ep.get("sdCapacityAvailable")}
+    return {
+        "ptz": "pan_and_tilt" in o, "sirena": "trigger_alarm_sound" in o, "calibrar": "calibrate" in o,
+        "privacidad": _escribible(sn, "enabled"), "encendida": p.get("enabled", True) is not False,
+        "foco": _escribible(sn, "light"), "foco_on": bool(p.get("light")),
+        "modos": modos, "modo": ep.get("guardMode"), "estacion": est, "sd": sd,
+        "tipos_posibles": [t for t, prop in TIPOS_DETECCION if prop in p],
+        "n_ajustes": sum(1 for k, _, _ in AJUSTES_CAM if _escribible(sn, k)),
+    }
+
+
+def leer_ajustes(sn):
+    if sn not in CLIENTE.props:
+        raise RuntimeError("Esa cámara no está conectada.")
+    salida = []
+    for clave, etq, ayuda in AJUSTES_CAM:
+        if not _escribible(sn, clave):
+            continue
+        m, v = CLIENTE.meta[sn][clave], CLIENTE.props[sn][clave]
+        a = {"clave": clave, "etiqueta": etq, "ayuda": ayuda, "valor": v}
+        if m.get("type") == "boolean":
+            a["tipo"] = "bool"
+        elif m.get("states"):
+            a["tipo"] = "sel"
+            a["opciones"] = [{"v": int(k) if str(k).lstrip("-").isdigit() else k, "t": _tr(t)} for k, t in m["states"].items()]
+        elif m.get("type") == "number":
+            a.update(tipo="num", min=m.get("min", 0), max=m.get("max", 100), unidad=m.get("unit", ""))
+        else:
+            continue
+        salida.append(a)
+    return salida
+
+
+def guardar_ajuste(sn, clave, valor):
+    if clave not in {k for k, _, _ in AJUSTES_CAM} | {"enabled", "light"} or not _escribible(sn, clave):
+        raise RuntimeError("Ese ajuste no existe en esta cámara.")
+    m = CLIENTE.meta[sn][clave]
+    if m.get("type") == "boolean":
+        valor = bool(valor)
+    else:
+        valor = int(valor)
+        if m.get("states") and str(valor) not in m["states"]:
+            raise RuntimeError("Valor no válido.")
+        if "min" in m and not m["min"] <= valor <= m.get("max", valor):
+            raise RuntimeError("Valor fuera de rango.")
+    CLIENTE.comando("device.set_property", serialNumber=sn, name=clave, value=valor)
+    return valor
+
+
+def accion(sn, que, valor=None):
+    """Órdenes directas: mover, sirena, foco, apagar/encender, modo, calibrar."""
+    if sn not in CLIENTE.dispositivos:
+        raise RuntimeError("Esa cámara no está conectada.")
+    cap = capacidades(sn)
+    nombre = CLIENTE.dispositivos[sn]["nombre"]
+    if que == "mover":
+        if not cap["ptz"] or valor not in DIRECCIONES:
+            raise RuntimeError("Esta cámara no se puede mover así.")
+        CLIENTE.comando("device.pan_and_tilt", serialNumber=sn, direction=DIRECCIONES[valor])
+        return ""
+    if que == "calibrar" and cap["calibrar"]:
+        CLIENTE.comando("device.calibrate", serialNumber=sn)
+        return f"Cámara «{nombre}» recolocada"
+    if que == "sirena" and cap["sirena"]:
+        segundos = max(5, min(60, int(valor or 10)))
+        CLIENTE.comando("device.trigger_alarm", serialNumber=sn, seconds=segundos)
+        return f"Sirena de «{nombre}» ({segundos} s)"
+    if que == "parar_sirena" and cap["sirena"]:
+        CLIENTE.comando("device.reset_alarm", serialNumber=sn)
+        return f"Sirena de «{nombre}» parada"
+    if que == "foco" and cap["foco"]:
+        guardar_ajuste(sn, "light", bool(valor))
+        return f"Foco de «{nombre}» {'encendido' if valor else 'apagado'}"
+    if que == "privacidad" and cap["privacidad"]:
+        guardar_ajuste(sn, "enabled", not bool(valor))  # privacidad = cámara apagada
+        return f"Cámara «{nombre}» {'apagada' if valor else 'encendida'}"
+    if que == "modo" and cap["modos"]:
+        modo = int(valor)
+        if modo not in [m["v"] for m in cap["modos"]]:
+            raise RuntimeError("Modo no válido.")
+        CLIENTE.comando("station.set_guard_mode", serialNumber=cap["estacion"], mode=modo)
+        return f"«{nombre}»: modo {next(m['t'] for m in cap['modos'] if m['v'] == modo)}"
+    raise RuntimeError("Esta cámara no admite esa orden.")
+
+
+def aplicar_casa(cuenta, privacidad=None, modo=None, solo=None, quien="automático"):
+    """Apaga/enciende y cambia el modo de las cámaras de una casa. solo = lista de seriales (None = todas)."""
+    hechos, fallos = [], []
+    for sn in camaras_de(cuenta):
+        if solo is not None and sn not in solo:
+            continue
+        cap = capacidades(sn)
+        for que, v, puede in (("privacidad", privacidad, cap["privacidad"]), ("modo", modo, bool(cap["modos"]))):
+            if v is None or v == "" or not puede:
+                continue
+            try:
+                if que == "privacidad" and cap["encendida"] == (not v):
+                    continue  # ya está como se quiere
+                if que == "modo" and str(cap["modo"]) == str(v):
+                    continue
+                hechos.append(accion(sn, que, v))
+            except Exception as e:
+                fallos.append(f"{CLIENTE.dispositivos.get(sn, {}).get('nombre', sn)}: {e}")
+    if hechos or fallos:
+        with cuentas.en_cuenta(cuenta, quien):
+            nk.registrar("Cámaras", quien, "; ".join(hechos + fallos), ok=not fallos)
+    return hechos, fallos
+
+
+# ---------------------------------------------------------------- foto de cada entrada por el teclado
+
+def _nombre_entrada(ident):
+    return "entrada-" + re.sub(r"[^\w-]", "", str(ident))[:40] + ".jpg"
+
+
+def foto_entrada(cuenta, ident, cuando, sn):
+    """Guarda la foto de la cámara de la puerta más cercana al momento de una entrada (en segundo plano)."""
+    nombre = _nombre_entrada(ident)
+    destino = carpeta(cuenta) / nombre
+    if destino.exists() or not sn:
+        return
+
+    def buscar():
+        t_ev = cuando.timestamp()
+        for _ in range(4):  # hasta ~20 s: la foto llega cuando la cámara detecta movimiento
+            t, foto = CLIENTE.fotos.get(sn, (0, None))
+            if foto and abs(t - t_ev) <= 150:
+                destino.write_bytes(foto)
+                return
+            with CLIENTE.foto_nueva:
+                CLIENTE.foto_nueva.wait(5)
+    threading.Thread(target=buscar, daemon=True).start()
+
+
+def foto_de_entrada(cuenta, ident):
+    nombre = _nombre_entrada(ident)
+    return nombre if (carpeta(cuenta) / nombre).exists() else ""
+
+
+# ---------------------------------------------------------------- vigilancia: cámaras sin conexión
+
+class VigilaCamaras(threading.Thread):
+    """Si el puente de Eufy pierde la conexión (o una cámara se queda sin batería), avisa a cada casa con cámaras."""
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.desde = None
+        self.avisadas = set()     # casas avisadas de la desconexión
+        self.bateria = set()      # seriales avisados de batería baja
+
+    def run(self):
+        time.sleep(120)  # margen al arrancar
+        while True:
+            try:
+                self._revisar()
+            except Exception as e:
+                nk.log(f"Vigilancia de cámaras: {e}")
+            time.sleep(60)
+
+    def _casas(self):
+        disp = ajustes_sistema().get("dispositivos") or {}
+        return {d.get("cuenta", cuentas.CUENTA_PRINCIPAL) for d in disp.values()} - {SIN_CASA}
+
+    def _revisar(self):
+        import alertas
+        if not credenciales_puestas():
+            return
+        ok = CLIENTE.conectado and CLIENTE.driver
+        ahora = datetime.now().astimezone()
+        if ok:
+            self.desde = None
+            for cuenta in list(self.avisadas):
+                try:
+                    with cuentas.en_cuenta(cuenta, "cámara"):
+                        alertas.enviar(nk.cargar_config(), "camara", "✅ Las cámaras vuelven a estar conectadas.", ahora)
+                except Exception:
+                    pass
+            self.avisadas.clear()
+        else:
+            self.desde = self.desde or ahora
+        for cuenta in self._casas():
+            if not cuentas.existe_cuenta(cuenta):
+                continue
+            with cuentas.en_cuenta(cuenta, "cámara"):
+                cfg = nk.cargar_config()
+                regla = alertas.ajustes(cfg)["reglas"].get("camara") or {}
+                if not ok and cuenta not in self.avisadas and ahora - self.desde >= timedelta(minutes=regla.get("minutos", 15)):
+                    if alertas.aviso_si_toca(cfg, "camara", f"Sin conexión con las cámaras desde las {self.desde:%H:%M}. "
+                                             f"{CLIENTE.error or 'Revisa el wifi, la corriente o la sesión de Eufy.'}", ahora):
+                        self.avisadas.add(cuenta)
+                if ok:
+                    for sn in camaras_de(cuenta):
+                        b = CLIENTE.props.get(sn, {}).get("battery")
+                        if b is None:
+                            continue
+                        if b <= 20 and sn not in self.bateria:
+                            if alertas.aviso_si_toca(cfg, "camara", f"🔋 Batería baja en «{CLIENTE.dispositivos[sn]['nombre']}»: {b} %.", ahora):
+                                self.bateria.add(sn)
+                        elif b > 30:
+                            self.bateria.discard(sn)
