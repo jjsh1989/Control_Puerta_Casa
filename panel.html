@@ -145,6 +145,22 @@
   .regla.apagada .regla-cuerpo { display: none; }
   .regla.no-disponible { opacity: .6; }
 
+  /* ---------- programaciones, ajustes de la cerradura y accesos */
+  .prog { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg);
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .prog.pausada { opacity: .6; }
+  .prog select, .prog input[type=time] { width: auto; }
+  .prog .peligro-txt { flex-basis: 100%; color: var(--danger); font-size: 12px; }
+  .prog .quitar { margin-left: auto; }
+  .ajc { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .ajc:last-child { border-bottom: 0; }
+  .ajc select, .ajc input[type=time] { width: auto; min-width: 110px; }
+  .ajc input[type=checkbox] { width: auto; transform: scale(1.25); accent-color: var(--accent); }
+  .acceso { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .acceso:last-child { border-bottom: 0; }
+  .acceso .acciones { margin-left: auto; }
+  .franja-persona { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .franja-persona input[type=time] { width: auto; }
   /* ---------- tarjetas plegables de Ajustes */
   .card.plegable { padding: 0; }
   .grupos-ajustes { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
@@ -315,7 +331,9 @@
     .dato { padding: 10px 12px; }
     .dato .n { font-size: 22px; }
     #rProxima { font-size: 14px !important; padding-top: 4px !important; }
-    .puerta-estado .acciones { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+    .puerta-estado .acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); width: 100%; }
+    .ajc { flex-wrap: wrap; }
+    .acceso .acciones { margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
     .puerta-estado .acciones button { flex-direction: column; gap: 3px; padding: 8px 4px; height: auto; min-height: 58px; min-width: 0;
       justify-content: center; font-size: 12px; line-height: 1.15; white-space: normal; text-align: center; }
     .menu-lista .tema { display: inline-flex; }
@@ -515,6 +533,8 @@
           <div class="acciones">
             <button onclick="accionPuerta('bloquear', this)"><svg class="i"><use href="#i-candado"/></svg>Bloquear</button>
             <button onclick="accionPuerta('desbloquear', this)"><svg class="i"><use href="#i-llave"/></svg>Desbloquear</button>
+            <button class="oculto" data-cap="lockngo" onclick="accionPuerta('lockngo', this)" title="Desbloquea y vuelve a bloquear a los pocos segundos"><svg class="i"><use href="#i-renovar"/></svg>Lock'n'Go</button>
+            <button class="oculto" data-cap="opener" onclick="accionPuerta('portal', this)"><svg class="i"><use href="#i-llave"/></svg>Abrir portal</button>
             <button class="principal" onclick="accionPuerta('abrir', this)"><svg class="i"><use href="#i-puerta"/></svg>Abrir puerta</button>
           </div>
         </div>
@@ -729,6 +749,32 @@
           <div class="ayuda">Variables: {nombre} (quien lo pide), {codigo}, {hasta}, {motivo}.</div>
         </div>
       </form>
+      <div class="card oculto" data-grupo="nuki" id="cardProgramas">
+        <div class="cab" style="margin-bottom:0"><h2>Programar apertura y cierre</h2><span class="muted peq" id="progResumen"></span></div>
+        <p class="muted peq" style="margin:6px 0 10px">La cerradura lo hace sola a esa hora los días marcados. Si el servidor estuviera apagado a esa hora, no se hace con retraso.</p>
+        <div id="listaProgramas"></div>
+        <div class="acciones" style="margin-top:10px">
+          <button type="button" onclick="nuevaProg()"><svg class="i"><use href="#i-mas"/></svg>Añadir</button>
+          <button type="button" class="principal" onclick="guardarProgs(this)">Guardar</button>
+        </div>
+      </div>
+      <div class="card solo-admin oculto" data-grupo="nuki" id="cardAjCerradura">
+        <div class="cab" style="margin-bottom:0"><h2>Ajustes de la cerradura</h2><span class="muted peq" id="ajcModelo"></span></div>
+        <p class="muted peq" style="margin:6px 0 4px">Solo aparecen los ajustes que tiene tu modelo. Se cambian en la cerradura, igual que desde la app de Nuki.</p>
+        <div id="ajcCampos"><div class="vacio">Cargando…</div></div>
+        <div class="acciones" style="margin-top:10px; justify-content:flex-end"><button type="button" class="principal" onclick="guardarAjCerradura(this)">Guardar en la cerradura</button></div>
+      </div>
+      <div class="card solo-admin oculto" data-grupo="nuki" id="cardAccesos">
+        <div class="cab" style="margin-bottom:0"><h2>Accesos a la cerradura</h2><span class="muted peq" id="accResumen"></span></div>
+        <p class="muted peq" style="margin:6px 0 4px">Quién más puede abrir: apps de Nuki, llaveros, teclado… (los códigos están en Personas). Desactivar es reversible; eliminar, no.</p>
+        <div id="accLista"><div class="vacio">Cargando…</div></div>
+      </div>
+      <div class="card solo-admin oculto" data-grupo="nuki" id="cardOpener">
+        <div class="cab" style="margin-bottom:0"><h2>Opener (portal)</h2><span class="muted peq" id="opResumen"></span></div>
+        <p class="muted peq" style="margin:6px 0 0">Si tu cuenta de Nuki tiene un Opener (abre el portal del edificio), asígnalo a esta casa y aparecerá el botón «Abrir portal».</p>
+        <label for="opSel">Opener de esta casa</label><select id="opSel"></select>
+        <div class="acciones" style="margin-top:10px; justify-content:flex-end"><button type="button" class="principal" onclick="guardarOpener(this)">Guardar</button></div>
+      </div>
       <form class="card solo-admin" data-grupo="comunicacion" id="formSmtp" onsubmit="guardarSmtp(event)">
         <div class="cab" style="margin-bottom:0"><h2>Servidor de correo (SMTP)</h2><span class="chip">Solo administrador · común a todas las cuentas</span></div>
         <p class="muted peq" style="margin:6px 0 0">Con Gmail: servidor <b>smtp.gmail.com</b>, puerto <b>587</b>, STARTTLS, tu correo como usuario y una
@@ -848,6 +894,16 @@
     <label for="p_seccion">Sección</label>
     <select id="p_seccion"></select>
     <div class="ayuda">Las secciones se crean y se editan en <a href="#" onclick="dlgPersona.close(); irA('ajustes'); verGrupo('nuki'); abrirTarjeta('cardSecciones', true); return false">Ajustes → Secciones</a>.</div>
+    <div id="p_franjaBloque">
+      <label for="p_franjaModo">Cuándo funciona su código</label>
+      <select id="p_franjaModo" onchange="$('p_franja').classList.toggle('oculto', this.value === 'siempre')">
+        <option value="siempre">A cualquier hora</option><option value="franja">Solo algunos días y horas</option></select>
+      <div id="p_franja" class="franja-persona oculto">
+        <span class="dias" id="p_dias"></span>
+        <span>de <input type="time" id="p_desde" value="09:00"> a <input type="time" id="p_hasta" value="14:00"></span>
+      </div>
+      <div class="ayuda">Para limpieza, mantenimiento… Fuera de ese horario su código no abre. Si ya tiene código, se cambia al guardar, sin darle otro número.</div>
+    </div>
     <div id="p_apikeyBloque"><label for="p_apikey">Clave de CallMeBot de esta persona</label><input id="p_apikey" autocomplete="off"></div>
     <div class="pie"><button type="button" onclick="dlgPersona.close()">Cancelar</button><button class="principal" type="submit">Guardar</button></div>
   </form>
@@ -970,7 +1026,7 @@
 <dialog id="dlgConfirmar">
   <form method="dialog">
     <h2 id="cfTitulo">¿Seguro?</h2>
-    <p id="cfTexto" class="muted" style="margin:6px 0 0"></p>
+    <p id="cfTexto" class="muted" style="margin:6px 0 0; white-space:pre-line"></p>
     <div id="cfCampoBloque" class="oculto"><input id="cfCampo" autocomplete="off" style="margin-top:12px"></div>
     <div class="pie"><button value="no" type="submit">Cancelar</button><button id="cfSi" value="si" type="submit" class="principal">Aceptar</button></div>
   </form>
@@ -1173,7 +1229,7 @@ async function arrancarApp() {
   else if (!CONFIG.nuki.token_puesto || !CONFIG.nuki.smartlock_id) tab = "ajustes";
   if (tab === "whatsapp" || tab === "cuentas") tab = "ajustes";
   irA(tab || "personas");
-  cargarCamara(null, true); if (!CONFIG.solo_camara) cargarPuerta();
+  cargarCamara(null, true); if (!CONFIG.solo_camara) { cargarPuerta(); cargarCapacidades(); }
   abrirEventoDelEnlace();
 }
 window.addEventListener("hashchange", abrirEventoDelEnlace);
@@ -1265,7 +1321,7 @@ function tarjetaPersona(u) {
     return `<div class="persona" id="p-${esc(u.id)}">
       <div class="persona-cab">
         <div class="avatar" style="background:${color(u.nombre)}">${esc(iniciales(u.nombre))}</div>
-        <div style="flex:1; min-width:0"><div class="nombre">${esc(u.nombre)}</div><div class="chips">${estado}${tipo}</div></div>
+        <div style="flex:1; min-width:0"><div class="nombre">${esc(u.nombre)}</div><div class="chips">${estado}${tipo}${u.franja_texto ? `<span class="chip" title="Horario del código">🕒 ${esc(u.franja_texto)}</span>` : ""}</div></div>
         <button class="fantasma icono-btn" title="Mostrar teléfono y código" onclick="revelar('${u.id}', this)">${ico("ojo")}</button>
       </div>
       <div class="secreto tel"><span class="etq">Teléfono</span><span class="valor" data-tel>${esc(u.telefono)}</span></div>
@@ -1384,13 +1440,19 @@ function abrirPersona(id) {
     : (u && u.telegram ? "Telegram vinculado ✓" : "Con Telegram: después de guardar, pulsa el botón de Telegram de su ficha para enviarle el enlace de conexión.");
   $("p_apikey").value = ""; $("p_apikey").placeholder = u && u.tiene_apikey ? "Guardada (vacío = no cambiar)" : "";
   $("p_apikeyBloque").classList.toggle("oculto", CONFIG?.whatsapp?.proveedor !== "callmebot");
+  const f = u && u.franja;
+  $("p_franjaModo").value = f ? "franja" : "siempre"; $("p_franja").classList.toggle("oculto", !f);
+  $("p_dias").innerHTML = LETRAS.map((l, i) => `<label class="dia" title="${DIAS[i]}"><input type="checkbox" data-pdia="${i}" ${(f ? f.dias : [0,1,2,3,4]).includes(i) ? "checked" : ""}>${l}</label>`).join("");
+  $("p_desde").value = f ? f.desde : "09:00"; $("p_hasta").value = f ? f.hasta : "14:00";
   $("dlgPersona").showModal();
 }
 async function guardarPersona(ev) {
   ev.preventDefault();
   await conBoton(ev.submitter, async () => {
     await api("POST", "/api/destinatario", {id: $("p_id").value || null, nombre: $("p_nombre").value, telefono: $("p_tel").value,
-      tipo: $("p_tipo").value, seccion: $("p_seccion").value, canal_envio: $("p_canal").value, callmebot_apikey: $("p_apikey").value});
+      tipo: $("p_tipo").value, seccion: $("p_seccion").value, canal_envio: $("p_canal").value, callmebot_apikey: $("p_apikey").value,
+      franja: {activa: $("p_franjaModo").value === "franja", desde: $("p_desde").value, hasta: $("p_hasta").value,
+               dias: [...document.querySelectorAll("#p_dias [data-pdia]")].filter(x => x.checked).map(x => +x.dataset.pdia)}});
     $("dlgPersona").close(); aviso("Guardado"); cargarEstado();
   });
 }
@@ -1674,6 +1736,7 @@ function verGrupo(g) {
     if (g === "casas") cargarCuentas();
   }
   if (g === "casas") pintarEstaCasa();
+  if (g === "nuki" && CAP?.nuki) cargarNukiExtra();
 }
 function pintarEstaCasa() {
   $("ecNombre").textContent = YO?.nombre_cuenta || "";
@@ -1765,13 +1828,15 @@ const REGLAS = [
   ["abierta", "🚪 Puerta abierta demasiado tiempo", "el sensor de la puerta la ve abierta más de los minutos que elijas"],
   ["atascada", "⚠️ Cerradura atascada", "el motor no pudo terminar de girar (puerta mal cerrada o algo bloquea el cerrojo)"],
   ["bloqueo", "🔒 Cerradura bloqueada", "cada vez que alguien bloquea la cerradura (teclado, app, botón, automático…)"],
+  ["desconectada", "📡 Cerradura sin conexión", "la cerradura no responde (wifi, bridge o pilas) durante los minutos que elijas"],
   ["movimiento", "📷 Movimiento o timbre", "lo detecta la cámara Eufy"],
 ];
 const LETRAS = ["L", "M", "X", "J", "V", "S", "D"];
 function camsCuenta() { return (CAMARA?.dispositivos || []).filter(d => d.cuenta === YO?.cuenta); }
 function pintarReglas() {
   const a = CONFIG.alertas || {reglas: {}, destino: {}};
-  $("reglasAvisos").innerHTML = REGLAS.filter(([t]) => !soloCamara() || t === "movimiento").map(([t, titulo, desc]) => {
+  $("reglasAvisos").innerHTML = REGLAS.filter(([t]) => !soloCamara() || t === "movimiento")
+    .filter(([t]) => !(t === "abierta" && CAP && CAP.nuki && CAP.sensor === false)).map(([t, titulo, desc]) => {
     const r = a.reglas[t] || {}, nd = t === "movimiento" && !camsCuenta().length;
     const clipDef = t !== "incorrecto";
     return `<div class="regla ${r.activo && !nd ? "on" : "apagada"} ${nd ? "no-disponible" : ""}" data-tipo="${t}">
@@ -1787,8 +1852,9 @@ function pintarReglas() {
         </span>
         ${t === "incorrecto" || t === "ataque" ? `<span>a partir de <input type="number" min="1" max="10" data-k="minimo" value="${r.minimo || (t === "ataque" ? 5 : 2)}"> intentos seguidos (10 min)</span>` : ""}
         ${t === "abierta" ? `<span>avisar si sigue abierta <input type="number" min="1" max="240" data-k="minutos" value="${r.minutos || 5}"> min</span>` : ""}
+        ${t === "desconectada" ? `<span>avisar tras <input type="number" min="1" max="240" data-k="minutos" value="${r.minutos || 15}"> min sin respuesta</span>` : ""}
         ${t === "movimiento" && !nd ? `<span class="muted peq" style="flex-basis:100%">Cámaras que avisan: ${esc(camsCuenta().filter(d => d.movimiento).map(d => d.nombre).join(", ") || "ninguna")} · se eligen en Ajustes → Cámara Eufy</span>` : ""}
-        ${camsCuenta().length ? `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-k="clip" ${(r.clip ?? clipDef) ? "checked" : ""}>🎥 con clip</label>` : ""}
+        ${camsCuenta().length && t !== "desconectada" ? `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-k="clip" ${(r.clip ?? clipDef) ? "checked" : ""}>🎥 con clip</label>` : ""}
       </div>${nd ? '<div class="ayuda">Disponible cuando la cámara esté conectada y asignada a esta cuenta.</div>' : ""}</div>`;
   }).join("");
   const d = a.destino || {};
@@ -1902,6 +1968,7 @@ async function cargarPuerta(b) {
     try { p = (await api("GET", "/api/cerradura")).resultado; }
     catch (e) { $("puCerrojo").textContent = "sin datos"; $("puCerrojo").className = "chip"; return; }
     $("puNombre").textContent = p.nombre || "Puerta";
+    if (!p.online) { $("puCerrojo").textContent = "📡 sin conexión"; $("puCerrojo").className = "chip mal"; $("puSensor").classList.add("oculto"); return; }
     $("puCerrojo").textContent = (p.cerrojo === 1 ? "🔒 " : p.cerrojo === 254 ? "⚠️ " : "🔓 ") + p.cerrojo_texto;
     $("puCerrojo").className = "chip" + (p.cerrojo === 1 ? " on" : p.cerrojo === 254 ? " mal" : " aviso");
     $("puSensor").classList.toggle("oculto", !p.sensor);
@@ -1912,12 +1979,149 @@ async function cargarPuerta(b) {
 async function accionPuerta(que, b) {
   const textos = {abrir: ["Abrir la puerta", "Se desbloqueará y se soltará el pestillo para que la puerta se pueda empujar.", "Abrir"],
                   desbloquear: ["Desbloquear", "Se quitará el cerrojo (la puerta quedará cerrada solo con el pestillo).", "Desbloquear"],
-                  bloquear: ["Bloquear", "Se echará el cerrojo.", "Bloquear"]}[que];
-  if (!await confirmar(textos[1], {titulo: textos[0], boton: textos[2], peligro: que !== "bloquear"})) return;
+                  bloquear: ["Bloquear", "Se echará el cerrojo.", "Bloquear"],
+                  lockngo: ["Lock'n'Go", "Se desbloquea y, a los pocos segundos, se vuelve a bloquear sola. Para salir con las manos ocupadas.", "Lock'n'Go"],
+                  portal: ["Abrir el portal", `Se abrirá el portal (${CAP?.opener_nombre || "Opener"}).`, "Abrir portal"]}[que];
+  if (!await confirmar(textos[1], {titulo: textos[0], boton: textos[2], peligro: !["bloquear", "lockngo"].includes(que)})) return;
   await conBoton(b, async () => {
     await api("POST", "/api/cerradura/accion", {accion: que});
     aviso("Orden enviada a la cerradura"); setTimeout(() => cargarPuerta(), 6000); setTimeout(() => cargarPuerta(), 15000);
   });
+}
+
+// ---------- lo que tiene la cerradura de esta casa (el panel se adapta)
+let CAP = null;
+async function cargarCapacidades() {
+  try { CAP = (await api("GET", "/api/nuki/capacidades")).resultado; } catch (e) { CAP = null; }
+  aplicarCapacidades();
+}
+function aplicarCapacidades() {
+  const c = CAP || {}, admin = YO?.rol === "admin", nuki = !!c.nuki && !soloCamara();
+  document.querySelectorAll("[data-cap]").forEach(b => b.classList.toggle("oculto", !c[b.dataset.cap]));
+  $("cardProgramas").classList.toggle("oculto", !nuki);
+  $("cardAjCerradura").classList.toggle("oculto", !(admin && nuki && (c.ajustes || []).length));
+  $("cardAccesos").classList.toggle("oculto", !(admin && nuki));
+  $("cardOpener").classList.toggle("oculto", !(admin && nuki && ((c.openers || []).length || c.opener)));
+  $("p_franjaBloque").classList.toggle("oculto", nuki && c.teclado === false);
+  $("ajcModelo").textContent = c.modelo || "";
+  if (CONFIG?.alertas && $("reglasAvisos").children.length) pintarReglas();
+  if (!$("tab-ajustes").classList.contains("oculto")) verGrupo(GRUPO_AJ);
+}
+function cargarNukiExtra() {
+  cargarProgs();
+  if (YO?.rol !== "admin") return;
+  if (!$("cardAjCerradura").classList.contains("oculto")) cargarAjCerradura();
+  cargarAccesos();
+  pintarOpener();
+}
+
+// programaciones
+const ACC_PROG = {bloquear: "🔒 Bloquear", desbloquear: "🔓 Desbloquear", abrir: "🚪 Abrir la puerta", lockngo: "↻ Lock'n'Go", portal: "🏢 Abrir el portal"};
+let PROGS = [];
+async function cargarProgs() {
+  try { PROGS = (await api("GET", "/api/programaciones")).resultado; } catch (e) { PROGS = []; }
+  pintarProgs();
+}
+function accionesProgDisponibles() {
+  return Object.keys(ACC_PROG).filter(a => (a !== "lockngo" || CAP?.lockngo) && (a !== "portal" || CAP?.opener));
+}
+function pintarProgs() {
+  const caja = $("listaProgramas"), acc = accionesProgDisponibles();
+  const activas = PROGS.filter(p => p.activa).length;
+  $("progResumen").textContent = PROGS.length ? `${activas} activa${activas === 1 ? "" : "s"}` : "";
+  if (!PROGS.length) { caja.innerHTML = '<div class="vacio" style="padding:14px">No hay nada programado.</div>'; return; }
+  caja.innerHTML = PROGS.map((p, i) => `<div class="prog ${p.activa ? "" : "pausada"}" data-i="${i}">
+    <select data-k="accion" onchange="leerProgs(); pintarProgs()">${acc.concat(acc.includes(p.accion) ? [] : [p.accion]).map(a => `<option value="${a}" ${a === p.accion ? "selected" : ""}>${ACC_PROG[a]}</option>`).join("")}</select>
+    <span>a las <input type="time" data-k="hora" value="${esc(p.hora)}"></span>
+    <span class="dias">${LETRAS.map((l, d) => `<label class="dia" title="${DIAS[d]}"><input type="checkbox" data-dia="${d}" ${p.dias.includes(d) ? "checked" : ""}>${l}</label>`).join("")}</span>
+    ${["bloquear", "lockngo"].includes(p.accion) && CAP?.sensor ? `<label class="interruptor"><input type="checkbox" data-k="solo_si_cerrada" ${p.solo_si_cerrada ? "checked" : ""}> solo si la puerta está cerrada</label>` : ""}
+    <label class="interruptor"><input type="checkbox" data-k="avisar" ${p.avisar ? "checked" : ""}> avisarme</label>
+    <label class="interruptor"><input type="checkbox" data-k="activa" ${p.activa ? "checked" : ""} onchange="this.closest('.prog').classList.toggle('pausada', !this.checked)"> activa</label>
+    <button type="button" class="fantasma icono-btn peligro quitar" title="Quitar" aria-label="Quitar" onclick="leerProgs(); PROGS.splice(${i}, 1); pintarProgs()">${ico("papelera")}</button>
+    ${p.accion === "abrir" || p.accion === "desbloquear" ? `<div class="peligro-txt">⚠️ ${p.accion === "abrir" ? "La puerta quedará abierta para cualquiera a esa hora." : "La puerta quedará sin cerrojo."} Combínalo con un «Bloquear» más tarde.</div>` : ""}
+  </div>`).join("");
+}
+function leerProgs() {
+  document.querySelectorAll("#listaProgramas .prog").forEach(el => {
+    const p = PROGS[+el.dataset.i], q = k => el.querySelector(`[data-k="${k}"]`);
+    p.accion = q("accion").value; p.hora = q("hora").value || "00:00";
+    p.dias = [...el.querySelectorAll("[data-dia]")].filter(x => x.checked).map(x => +x.dataset.dia);
+    p.avisar = q("avisar").checked; p.activa = q("activa").checked;
+    if (q("solo_si_cerrada")) p.solo_si_cerrada = q("solo_si_cerrada").checked;
+  });
+}
+function nuevaProg() {
+  leerProgs();
+  PROGS.push({accion: "bloquear", hora: "23:00", dias: [0,1,2,3,4,5,6], activa: true, avisar: true, solo_si_cerrada: true});
+  pintarProgs();
+}
+async function guardarProgs(b) {
+  leerProgs();
+  if (PROGS.some(p => p.activa && p.accion === "abrir") &&
+      !await confirmar("Hay una apertura programada: a esa hora la puerta se abrirá aunque no haya nadie.", {titulo: "Apertura programada", boton: "Guardar igualmente", peligro: true})) return;
+  await conBoton(b, async () => { await api("POST", "/api/programaciones", {lista: PROGS}); aviso("Programaciones guardadas"); await cargarProgs(); });
+}
+
+// ajustes de la cerradura
+let AJC = [];
+async function cargarAjCerradura() {
+  try { AJC = (await api("GET", "/api/admin/nuki/ajustes")).resultado; }
+  catch (e) { $("ajcCampos").innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; }
+  $("ajcCampos").innerHTML = AJC.map(a => `<div class="ajc"><div><b>${esc(a.etiqueta)}</b>${a.ayuda ? `<div class="muted peq">${esc(a.ayuda)}</div>` : ""}</div>
+    ${a.tipo === "bool" ? `<input type="checkbox" data-ajc="${a.clave}" ${a.valor ? "checked" : ""} aria-label="${esc(a.etiqueta)}">`
+      : a.tipo === "hora" ? `<input type="time" data-ajc="${a.clave}" value="${esc(a.valor)}">`
+      : `<select data-ajc="${a.clave}">${a.opciones.concat(a.opciones.some(o => o.v === a.valor) ? [] : [{v: a.valor, t: String(a.valor)}]).map(o => `<option value="${o.v}" ${o.v === a.valor ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select>`}</div>`).join("")
+    || '<div class="vacio">Tu modelo no tiene ajustes que se puedan cambiar desde aquí.</div>';
+}
+async function guardarAjCerradura(b) {
+  const cambios = {};
+  document.querySelectorAll("[data-ajc]").forEach(el => {
+    const a = AJC.find(x => x.clave === el.dataset.ajc); if (!a) return;
+    const v = a.tipo === "bool" ? el.checked : a.tipo === "hora" ? el.value : +el.value;
+    if (v !== a.valor) cambios[a.clave] = v;
+  });
+  if (!Object.keys(cambios).length) return aviso("No has cambiado nada");
+  const lista = Object.keys(cambios).map(k => "• " + AJC.find(x => x.clave === k).etiqueta).join("\n");
+  if (!await confirmar("Se cambiará en la cerradura:\n" + lista, {titulo: "Ajustes de la cerradura", boton: "Guardar"})) return;
+  await conBoton(b, async () => {
+    const r = (await api("POST", "/api/admin/nuki/ajustes", {cambios})).resultado;
+    aviso(r.cambios.length ? "Guardado en la cerradura" : "No había cambios"); await cargarAjCerradura();
+  });
+}
+
+// accesos (apps, llaveros…)
+async function cargarAccesos() {
+  let l;
+  try { l = (await api("GET", "/api/admin/nuki/accesos")).resultado; }
+  catch (e) { $("accLista").innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; }
+  $("accResumen").textContent = `${l.filter(a => a.activo).length} activos`;
+  const icono = {0: "📱", 1: "📶", 2: "🔑", 3: "🔢"};
+  $("accLista").innerHTML = l.map(a => `<div class="acceso">
+      <span style="font-size:20px">${icono[a.tipo] || "•"}</span>
+      <div style="min-width:0; flex:1"><b>${esc(a.nombre)}</b> <span class="chip">${esc(a.tipo_texto)}</span>${a.activo ? "" : ' <span class="chip mal">Desactivado</span>'}
+        <div class="muted peq">${a.usos != null ? `${a.usos} usos` : ""}${a.ultimo ? ` · último ${fecha(a.ultimo)}` : ""}${a.horario ? ` · 🕒 ${esc(a.horario)}` : ""}${a.tipo === 0 && !a.remoto ? " · solo cerca (sin acceso remoto)" : ""}</div></div>
+      ${a.gestionable ? `<div class="acciones">
+        <button type="button" onclick="cambiarAcceso('${a.id}', '${a.activo ? "desactivar" : "activar"}', this, '${esc(a.nombre).replace(/'/g, "")}')">${a.activo ? "Desactivar" : "Activar"}</button>
+        <button type="button" class="peligro" onclick="cambiarAcceso('${a.id}', 'eliminar', this, '${esc(a.nombre).replace(/'/g, "")}')">${ico("papelera")}Eliminar</button></div>` : ""}
+    </div>`).join("") || '<div class="vacio">No hay otros accesos.</div>';
+}
+async function cambiarAcceso(id, accion, b, nombre) {
+  const t = {desactivar: [`«${nombre}» no podrá abrir hasta que lo vuelvas a activar.`, "Desactivar", false],
+             activar: [`«${nombre}» podrá volver a abrir.`, "Activar", false],
+             eliminar: [`Se quitará el acceso de «${nombre}» de la cerradura. No se puede deshacer: habría que volver a invitarle desde la app de Nuki.`, "Eliminar", true]}[accion];
+  if (!await confirmar(t[0], {titulo: t[1] + " acceso", boton: t[1], peligro: t[2] || accion === "desactivar"})) return;
+  await conBoton(b, async () => { const r = (await api("POST", "/api/admin/nuki/acceso", {id, accion})).resultado; aviso(r.texto); await cargarAccesos(); });
+}
+
+// Opener
+function pintarOpener() {
+  const c = CAP || {}, l = c.openers || [];
+  $("opSel").innerHTML = '<option value="">Sin Opener</option>' + l.map(o => `<option value="${o.id}">${esc(o.nombre || o.id)}</option>`).join("");
+  $("opSel").value = CONFIG?.nuki?.opener_id || "";
+  $("opResumen").textContent = c.opener ? c.opener_nombre : "";
+}
+async function guardarOpener(b) {
+  await conBoton(b, async () => { await api("POST", "/api/admin/nuki/opener", {id: $("opSel").value}); aviso("Guardado"); await cargarAjustes(); await cargarCapacidades(); });
 }
 
 // ---------- cámara

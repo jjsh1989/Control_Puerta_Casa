@@ -212,6 +212,59 @@ def peticion(metodo, url, cuerpo=None, cabeceras=None, formulario=False):
         raise RuntimeError(f"No se pudo conectar con {url}: {e.reason}") from None
 
 
+DIAS_CORTOS = ["L", "M", "X", "J", "V", "S", "D"]
+
+
+def _min(hhmm):
+    h, m = (str(hhmm or "0:0") + ":0").split(":")[:2]
+    return (int(h) % 24) * 60 + int(m) % 60
+
+
+def validar_franja(f):
+    """Horario en que un código funciona: {"dias": [0..6] (0 = lunes), "desde": "HH:MM", "hasta": "HH:MM"}.
+    Devuelve la franja limpia o None (= siempre)."""
+    if not f or not f.get("activa"):
+        return None
+    dias = sorted({int(x) % 7 for x in (f.get("dias") or [])})
+    if not dias:
+        raise RuntimeError("Horario: marca al menos un día.")
+    desde, hasta = _min(f.get("desde") or "00:00"), _min(f.get("hasta") or "00:00")
+    if hasta == 0 and desde == 0:
+        pass  # todo el día, solo esos días
+    elif desde >= hasta:
+        raise RuntimeError("Horario: la hora de fin debe ser posterior a la de inicio (la cerradura no admite franjas que crucen la medianoche).")
+    return {"activa": True, "dias": dias, "desde": f"{desde // 60:02d}:{desde % 60:02d}",
+            "hasta": f"{hasta // 60:02d}:{hasta % 60:02d}"}
+
+
+def franja_nuki(f):
+    """(allowedWeekDays, allowedFromTime, allowedUntilTime) para la API de Nuki.
+    Días: lunes = 64, martes = 32 … domingo = 1. Horas en minutos desde las 00:00 (0 y 0 = todo el día)."""
+    if not f or not f.get("activa"):
+        return 127, 0, 0
+    mascara = sum(64 >> d for d in f["dias"])
+    return mascara, _min(f["desde"]), _min(f["hasta"])
+
+
+def texto_dias(d):
+    d = sorted(d)
+    if d == list(range(7)):
+        return "todos los días"
+    if d == list(range(5)):
+        return "de lunes a viernes"
+    if d == [5, 6]:
+        return "sábados y domingos"
+    return " ".join(DIAS_CORTOS[x] for x in d)
+
+
+def texto_franja(f):
+    if not f or not f.get("activa"):
+        return ""
+    dias = texto_dias(f["dias"])
+    horas = "a cualquier hora" if f["desde"] == f["hasta"] == "00:00" else f"de {f['desde']} a {f['hasta']}"
+    return f"{dias}, {horas}"
+
+
 def fecha_iso(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -234,14 +287,15 @@ class Nuki:
         _, r = peticion("GET", f"{NUKI_API}/smartlock/{id_cerradura}/auth", cabeceras=self._cab())
         return r if isinstance(r, list) else []
 
-    def crear_codigo(self, id_cerradura, nombre, codigo, desde, hasta):
+    def crear_codigo(self, id_cerradura, nombre, codigo, desde, hasta, franja=None):
+        dias, de, a = franja_nuki(franja)
         cuerpo = {
             "name": nombre[:20],
             "type": TIPO_CODIGO_TECLADO,
             "code": int(codigo),
-            "allowedWeekDays": 127,  # todos los días
-            "allowedFromTime": 0,
-            "allowedUntilTime": 0,
+            "allowedWeekDays": dias,  # 127 = todos los días
+            "allowedFromTime": de,
+            "allowedUntilTime": a,
         }
         if hasta is not None:  # sin fecha de fin = código fijo
             cuerpo["allowedFromDate"] = fecha_iso(desde)
@@ -277,9 +331,35 @@ class Nuki:
         _, r = peticion("GET", f"{NUKI_API}/smartlock/{id_cerradura}", cabeceras=self._cab())
         return r if isinstance(r, dict) else {}
 
+    def actualizar_auth(self, id_cerradura, auth, cambios):
+        """Modifica una autorización conservando lo que no se cambia (nombre, horario, fechas…)."""
+        cuerpo = {"name": auth.get("name", "")[:20], "enabled": auth.get("enabled", True),
+                  "allowedWeekDays": auth.get("allowedWeekDays", 127),
+                  "allowedFromTime": auth.get("allowedFromTime", 0),
+                  "allowedUntilTime": auth.get("allowedUntilTime", 0)}
+        if "remoteAllowed" in auth:
+            cuerpo["remoteAllowed"] = auth["remoteAllowed"]
+        for k in ("allowedFromDate", "allowedUntilDate"):
+            if auth.get(k):
+                cuerpo[k] = auth[k]
+        cuerpo.update(cambios)
+        if self.simular:
+            log(f"[SIMULACIÓN] Modificaría la autorización {auth.get('id')}: {cambios}")
+            return
+        peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/auth/{auth['id']}", cuerpo, self._cab())
+
+    def guardar_ajustes(self, id_cerradura, seccion, datos):
+        """seccion: «config» o «advancedConfig». Se manda el bloque completo (leído antes y modificado)."""
+        ruta = {"config": "config", "advancedConfig": "advanced/config"}[seccion]
+        if self.simular:
+            log(f"[SIMULACIÓN] Guardaría {seccion}: {datos}")
+            return
+        peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/{ruta}", datos, self._cab())
+
     def accion(self, id_cerradura, accion):
-        """1 desbloquear · 2 bloquear · 3 abrir la puerta (soltar el pestillo)."""
-        if accion not in (1, 2, 3):
+        """Cerradura: 1 desbloquear · 2 bloquear · 3 abrir (pestillo) · 4 lock'n'go · 5 lock'n'go con pestillo.
+        Opener: 3 abrir el portal."""
+        if accion not in (1, 2, 3, 4, 5):
             raise RuntimeError("Acción no permitida.")
         if self.simular:
             log(f"[SIMULACIÓN] Enviaría la acción {accion} a la cerradura")
@@ -604,7 +684,8 @@ def renovar_codigo(config, nuki, destinatario, simular=False, abrir=True, codigo
         codigo = generar_codigo(codigos_ajenos | {str(a.get("code")) for a in propios} | codigos_usados())
     desde = datetime.now(timezone.utc)
     hasta = None if fijo else desde + timedelta(days=dias)
-    nuki.crear_codigo(id_cerradura, nombre_auth, codigo, desde, hasta)
+    franja = destinatario.get("franja")
+    nuki.crear_codigo(id_cerradura, nombre_auth, codigo, desde, hasta, franja)
     validez = "sin caducidad (fijo)" if fijo else f"válido hasta el {hasta.astimezone():%d/%m/%Y %H:%M}"
     log(f"Código nuevo para {destinatario['nombre']}: {validez}")
     registrar("Código fijo creado" if fijo else "Código creado", destinatario["nombre"],
@@ -624,6 +705,8 @@ def renovar_codigo(config, nuki, destinatario, simular=False, abrir=True, codigo
         hasta=hasta.astimezone().strftime("%d/%m/%Y a las %H:%M") if hasta else "sin fecha de fin",
         dias=dias,
     )
+    if texto_franja(franja):
+        texto += f"\nSolo funciona {texto_franja(franja)}."
     try:
         enlace = enviar_whatsapp(config, destinatario, texto, simular, abrir)
     except Exception:

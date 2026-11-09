@@ -28,6 +28,7 @@ import camara
 import telegram
 import cuentas
 import nuki_codigos as nk
+import nuki_extra
 import waha
 
 nk.ORIGEN = "panel"
@@ -151,6 +152,7 @@ def estado_usuarios(cfg):
             "id": d["id"], "nombre": d["nombre"], "telefono": ocultar_telefono(d["telefono"]),
             "automatico": d.get("automatico", True), "fijo": d.get("fijo", False),
             "seccion": d.get("seccion", ""),
+            "franja": d.get("franja"), "franja_texto": nk.texto_franja(d.get("franja")),
             "canal_envio": d.get("canal_envio", "whatsapp"), "telegram": bool(d.get("telegram_chat")),
             "tiene_apikey": bool(d.get("callmebot_apikey")),
             "activo": activo, "caduca": caduca if activo else None,
@@ -256,6 +258,17 @@ class Programador(threading.Thread):
                     self._revisar(c["id"])
                 except Exception as e:
                     nk.log(f"Programador ({c['id']}): {e}")
+                try:
+                    with cuentas.en_cuenta(c["id"], "programado"):
+                        cuentas._ctx.origen = "programado"
+                        try:
+                            cfg = nk.cargar_config()
+                            nuki_extra.revisar_programaciones(
+                                cfg, lambda t, cfg=cfg: alertas.enviar(cfg, "programada", t))
+                        finally:
+                            cuentas._ctx.origen = None
+                except Exception as e:
+                    nk.log(f"Programaciones ({c['id']}): {e}")
                 if time.time() - self._bateria.get(c["id"], 0) >= self.BATERIA_CADA:
                     self._bateria[c["id"]] = time.time()
                     try:
@@ -712,6 +725,15 @@ class Manejador(BaseHTTPRequestHandler):
                                  "puerta": st.get("doorState"),
                                  "puerta_texto": alertas.ESTADOS_PUERTA.get(st.get("doorState"), "desconocido"),
                                  "sensor": st.get("doorState") in (2, 3), "online": r.get("serverState", 0) == 0})
+            if ruta == "/api/nuki/capacidades":
+                return self._ok(nuki_extra.capacidades(cfg, admin))
+            if ruta == "/api/programaciones":
+                l = cfg.get("programaciones") or []
+                return self._ok([{**p, "texto": nuki_extra.texto_prog(p)} for p in l])
+            if ruta == "/api/admin/nuki/ajustes" and admin:
+                return self._ok(nuki_extra.leer_ajustes(cfg))
+            if ruta == "/api/admin/nuki/accesos" and admin:
+                return self._ok(nuki_extra.accesos(cfg))
             if ruta == "/api/camara":
                 e = camara.estado()
                 cuenta = cuentas.cuenta_actual()
@@ -852,12 +874,25 @@ class Manejador(BaseHTTPRequestHandler):
 
         if ruta == "/api/cerradura/accion":
             acciones = {"abrir": (3, "Puerta abierta desde el panel"), "desbloquear": (1, "Cerradura desbloqueada desde el panel"),
-                        "bloquear": (2, "Cerradura bloqueada desde el panel")}
+                        "bloquear": (2, "Cerradura bloqueada desde el panel"),
+                        "lockngo": (4, "Lock'n'Go desde el panel"), "portal": (3, "Portal abierto desde el panel")}
             if datos.get("accion") not in acciones:
                 raise RuntimeError("Acción no permitida.")
             n, texto = acciones[datos["accion"]]
-            nuki.accion(cfg["nuki"]["smartlock_id"], n)
+            if datos["accion"] == "portal":
+                if not cfg["nuki"].get("opener_id"):
+                    raise RuntimeError("Esta casa no tiene Opener.")
+                nuki.accion(cfg["nuki"]["opener_id"], n)
+            else:
+                nuki.accion(cfg["nuki"]["smartlock_id"], n)
             nk.registrar(texto, s.get("nombre") or s["usuario"], "")
+            return self._ok()
+        if ruta == "/api/programaciones":
+            cfg["programaciones"] = nuki_extra.validar_programaciones(datos.get("lista"), cfg)
+            nk.guardar_config(cfg)
+            nk.registrar("Programaciones guardadas", s.get("nombre") or s["usuario"],
+                         "; ".join(nuki_extra.texto_prog(p) + ("" if p["activa"] else " (pausada)")
+                                   for p in cfg["programaciones"]) or "ninguna")
             return self._ok()
         if ruta == "/api/camara/probar":
             cuenta = cuentas.cuenta_actual()
@@ -878,6 +913,28 @@ class Manejador(BaseHTTPRequestHandler):
         # ---------- solo administrador
         if not admin:
             return self._error(403, "Solo el administrador puede hacer esto.")
+        if ruta == "/api/admin/nuki/ajustes":
+            hecho = nuki_extra.guardar_ajustes(cfg, datos.get("cambios") or {})
+            if hecho:
+                nk.registrar("Ajustes de la cerradura", s.get("nombre") or s["usuario"], "; ".join(hecho))
+            return self._ok({"cambios": hecho})
+        if ruta == "/api/admin/nuki/acceso":
+            return self._ok({"texto": nuki_extra.cambiar_acceso(cfg, datos.get("id"), datos.get("accion"))})
+        if ruta == "/api/admin/nuki/opener":
+            ident = datos.get("id")
+            if ident:
+                op = next((o for o in nuki_extra.capacidades(cfg, True).get("openers", []) if str(o["id"]) == str(ident)), None)
+                if not op:
+                    raise RuntimeError("No encuentro ese Opener en tu cuenta de Nuki.")
+                cfg["nuki"]["opener_id"], cfg["nuki"]["opener_nombre"] = op["id"], op["nombre"]
+                nk.registrar("Opener asignado", op["nombre"], "")
+            else:
+                cfg["nuki"].pop("opener_id", None)
+                cfg["nuki"].pop("opener_nombre", None)
+                cfg["programaciones"] = [p for p in cfg.get("programaciones") or [] if p["accion"] != "portal"]
+                nk.registrar("Opener quitado", "", "")
+            nk.guardar_config(cfg)
+            return self._ok()
         if ruta == "/api/admin/camara":
             if datos.get("borrar"):
                 camara.quitar_credenciales()
@@ -1159,8 +1216,30 @@ class Manejador(BaseHTTPRequestHandler):
                 existente.pop("seccion", None)
         if datos.get("callmebot_apikey"):
             existente["callmebot_apikey"] = datos["callmebot_apikey"].strip()
+        if "franja" in datos:
+            franja = nk.validar_franja(datos.get("franja"))
+            if franja != existente.get("franja"):
+                if franja:
+                    existente["franja"] = franja
+                else:
+                    existente.pop("franja", None)
+                nk.registrar("Horario del código", nombre, nk.texto_franja(franja) or "a cualquier hora")
+                Manejador._aplicar_franja(cfg, existente)
         nk.guardar_config(cfg)
         return existente["id"]
+
+    @staticmethod
+    def _aplicar_franja(cfg, persona):
+        """Si ya tiene código en la cerradura, le cambia el horario sin cambiar el número."""
+        if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
+            return
+        nuki = nk.Nuki(cfg["nuki"]["token"])
+        sid = cfg["nuki"]["smartlock_id"]
+        nombre_auth = nk.nombre_auth_de(cfg, persona)
+        dias, de, a = nk.franja_nuki(persona.get("franja"))
+        for auth in nuki.autorizaciones(sid):
+            if auth.get("type") == nk.TIPO_CODIGO_TECLADO and auth.get("name") == nombre_auth and auth.get("enabled", True):
+                nuki.actualizar_auth(sid, auth, {"allowedWeekDays": dias, "allowedFromTime": de, "allowedUntilTime": a})
 
 
 def main():

@@ -25,6 +25,8 @@ TIPOS = {
     "abierta": "🚪 La puerta lleva abierta demasiado tiempo",
     "atascada": "⚠️ La cerradura está atascada",
     "bloqueo": "🔒 Se ha bloqueado la cerradura",
+    "desconectada": "📡 La cerradura no responde",
+    "programada": "⏰ Acción programada",
 }
 ESTADOS_CERROJO = {0: "sin calibrar", 1: "bloqueada", 2: "desbloqueando…", 3: "desbloqueada", 4: "bloqueando…",
                    5: "pestillo abierto", 6: "desbloqueada (lock'n'go)", 7: "abriendo…", 254: "atascada", 255: "desconocido"}
@@ -43,6 +45,7 @@ INICIAL = {
         "abierta": {**REGLA_INICIAL, "siempre": True, "minutos": 5},
         "atascada": {**REGLA_INICIAL, "activo": True, "siempre": True},
         "bloqueo": {**REGLA_INICIAL, "siempre": False},
+        "desconectada": {**REGLA_INICIAL, "activo": True, "siempre": True, "minutos": 15},
     },
 }
 
@@ -127,7 +130,7 @@ def aviso_si_toca(cfg, tipo, detalle, momento):
             hay_camara = bool(camara.camara_puerta(cfg))
         except Exception:
             hay_camara = False
-        if hay_camara and tipo != "movimiento":
+        if hay_camara and tipo not in ("movimiento", "desconectada"):
             # con cámara: foto reciente y, en los avisos graves, un clip de unos segundos
             camara.enviar_con_camara(cfg, tipo, detalle, momento,
                                      con_clip=regla.get("clip", tipo != "incorrecto"))
@@ -160,9 +163,14 @@ def revisar(cfg):
     token, sid = cfg["nuki"].get("token"), cfg["nuki"].get("smartlock_id")
     if not (token and sid):
         return 0
-    eventos = nk.Nuki(token).registro(sid, 30)
     estado = nk.cargar_json(nk.ruta_estado(), {})
     e = estado.get(CLAVE_ESTADO) or {}
+    try:
+        eventos = nk.Nuki(token).registro(sid, 30)
+    except Exception as err:
+        enviados = _sin_respuesta(cfg, a, e, f"No se puede leer la cerradura: {err}")
+        nk.guardar_json(nk.ruta_estado(), {**nk.cargar_json(nk.ruta_estado(), {}), CLAVE_ESTADO: e})
+        return enviados
     vistos = list(e.get("vistos") or [])
     primera_vez = not vistos and not e.get("iniciado")
     nuevos = [ev for ev in eventos if _clave(ev) not in vistos]
@@ -211,12 +219,28 @@ def revisar(cfg):
 def _revisar_estado(cfg, a, sid, token, e):
     """Puerta abierta demasiado tiempo y cerradura atascada (lee el estado actual de la cerradura)."""
     r = a["reglas"]
-    if not (r["abierta"]["activo"] or r["atascada"]["activo"]):
+    if not (r["abierta"]["activo"] or r["atascada"]["activo"] or r["desconectada"]["activo"]):
         e.pop("abierta_desde", None)
         return 0
-    st = nk.Nuki(token).estado(sid).get("state") or {}
+    try:
+        datos = nk.Nuki(token).estado(sid)
+    except Exception as err:
+        return _sin_respuesta(cfg, a, e, f"No se puede leer la cerradura: {err}")
+    st = datos.get("state") or {}
     ahora = datetime.now().astimezone()
     enviados = 0
+    # cerradura sin conexión (Nuki dice que no la ve: wifi, bridge o pilas)
+    if datos.get("serverState", 0) != 0:
+        return _sin_respuesta(cfg, a, e, "Nuki indica que la cerradura está desconectada de internet "
+                              "(wifi, bridge o pilas).")
+    if e.get("sin_respuesta_desde"):
+        if e.get("sin_respuesta_avisada") and r["desconectada"]["activo"]:
+            try:
+                enviar(cfg, "desconectada", "✅ La cerradura vuelve a responder.", ahora)
+            except Exception:
+                pass
+        e.pop("sin_respuesta_desde", None)
+        e.pop("sin_respuesta_avisada", None)
     # puerta abierta
     if st.get("doorState") == 3:
         desde = datetime.fromisoformat(e["abierta_desde"]) if e.get("abierta_desde") else ahora
@@ -243,6 +267,20 @@ def _revisar_estado(cfg, a, sid, token, e):
     else:
         e.pop("atascada_avisada", None)
     return enviados
+
+
+def _sin_respuesta(cfg, a, e, motivo):
+    """Apunta desde cuándo no responde y avisa una sola vez pasados los minutos elegidos."""
+    ahora = datetime.now().astimezone()
+    desde = datetime.fromisoformat(e["sin_respuesta_desde"]) if e.get("sin_respuesta_desde") else ahora
+    e["sin_respuesta_desde"] = desde.isoformat(timespec="seconds")
+    regla = a["reglas"]["desconectada"]
+    minutos = regla.get("minutos", 15)
+    if regla["activo"] and not e.get("sin_respuesta_avisada") and ahora - desde >= timedelta(minutes=minutos):
+        e["sin_respuesta_avisada"] = True
+        return int(aviso_si_toca(cfg, "desconectada",
+                                 f"Sin respuesta desde las {desde:%H:%M} (más de {minutos} min). {motivo}", ahora))
+    return 0
 
 
 class Vigilante(threading.Thread):

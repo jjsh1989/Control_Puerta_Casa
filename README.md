@@ -16,17 +16,21 @@ Pensado para funcionar 24 h en un servidor doméstico (Proxmox + Docker) y entra
 
 **Códigos Nuki**
 - Por persona: *Semanal* (se renueva solo), *Temporal* (lo renuevas tú) o *Fijo* (no caduca).
+- **Horario por persona**: un código puede funcionar solo ciertos días y horas (p. ej. limpieza, L-V de 9 a 14).
 - **Invitados**: códigos de 2 horas a 1 semana que caducan solos.
 - Los códigos **nunca se repiten**, y los antiguos se **vigilan** unos días: si alguien teclea uno, sale en Entradas con 🚨.
 - **Orden seguro al renovar**: primero crea el nuevo, lo envía y solo entonces retira el viejo.
 
 **Puerta**
-- Estado de la cerradura y del sensor de puerta, y botones **Bloquear / Desbloquear / Abrir**.
+- Estado de la cerradura y del sensor de puerta, y botones **Bloquear / Desbloquear / Abrir** (y **Lock'n'Go** y **Abrir portal** si hay Opener).
+- **Programar apertura y cierre**: p. ej. bloquear todas las noches a las 23:00 (solo si la puerta está cerrada) con aviso.
+- **Ajustes de la cerradura** (bloqueo automático, pestillo, LED, botón…) y **accesos** (apps de Nuki, llaveros): ver, desactivar o eliminar.
+- **Se adapta a cada casa**: el panel pregunta a Nuki qué tiene la cerradura (teclado, sensor, llavero, Opener, ajustes de ese modelo) y solo muestra lo que sirve.
 - **Entradas** (registro de la cerradura con filtros) e **Historial** (todo lo que se hace en el panel y quién).
 
 **Avisos** (Telegram, WhatsApp o correo, según el tipo)
 - Código incorrecto, entradas de noche, códigos desactivados, batería baja.
-- **Puerta abierta más de X minutos** (y aviso cuando se cierra), **cerradura atascada** y **bloqueo**.
+- **Cerradura sin conexión** (wifi, bridge o pilas) y **puerta abierta más de X minutos** (y aviso cuando se cierra), **cerradura atascada** y **bloqueo**.
 - Con cámara: el aviso lleva **foto y clip** de la **cámara predeterminada** de esa casa.
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)
@@ -46,6 +50,7 @@ Pensado para funcionar 24 h en un servidor doméstico (Proxmox + Docker) y entra
 | `nuki_codigos.py` | Nuki: códigos, invitados, registro y acciones de la puerta (también desde el terminal) |
 | `cuentas.py` | Casas, usuarios y bóveda cifrada |
 | `alertas.py` | Reglas de aviso y vigilancia del estado de la puerta |
+| `nuki_extra.py` | Lo que depende de cada cerradura: capacidades, ajustes, accesos, Opener y programaciones |
 | `camara.py` | Cámaras Eufy: eventos, fotos, clips y directo |
 | `telegram.py` | Bot de Telegram (códigos y avisos) |
 | `waha.py` | WhatsApp con WAHA y control limitado de Docker |
