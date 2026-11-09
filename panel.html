@@ -2502,7 +2502,7 @@ async function guardarDiasCam(b) {
   } catch (e) { aviso("⚠️ " + e.message); } finally { b.disabled = false; }
 }
 async function vaciarCam(b) {
-  if (!confirm("¿Borrar ahora todas las fotos y clips de todas las casas, menos los marcados con 📌? No se puede deshacer.")) return;
+  if (!await confirmar("Se borran ahora todas las fotos y clips de todas las casas, menos los marcados con 📌. No se puede deshacer.", {titulo: "¿Borrar todo lo no marcado?", boton: "Borrar", peligro: true})) return;
   try {
     b.disabled = true;
     const r = (await api("POST", "/api/admin/camara/vaciar", {})).resultado;
@@ -2571,7 +2571,8 @@ async function marcarEvento(id, guardar, b) {
 }
 async function borrarEvento(id, b) {
   const e = (CAMARA?.eventos || []).find(x => x.id === id);
-  if (!confirm(`¿Borrar ${e?.clip && e?.foto ? "la foto y el clip" : e?.clip ? "el clip" : "la foto"} de «${e?.tipo || "este aviso"}»? No se puede deshacer.` + (e?.guardar ? "\n\nEstá marcado con 📌 «no borrar»." : ""))) return;
+  const que = e?.clip && e?.foto ? "la foto y el clip" : e?.clip ? "el clip" : "la foto";
+  if (!await confirmar(`Se borra${e?.clip && e?.foto ? "n" : ""} ${que} de «${e?.tipo || "este aviso"}». No se puede deshacer.` + (e?.guardar ? "\n\nEstá marcado con 📌 «No borrar»." : ""), {titulo: `¿Borrar ${que}?`, boton: "Borrar", peligro: true})) return;
   try {
     b.disabled = true;
     await api("POST", "/api/camara/evento", {id, accion: "borrar"});

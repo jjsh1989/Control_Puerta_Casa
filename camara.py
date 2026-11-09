@@ -345,6 +345,8 @@ def poner_borrado(modo, dia=None, hora=None):
         if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(hora)):
             raise RuntimeError("Hora no válida (HH:MM).")
         b["hora"] = hora
+    if modo == "semanal":  # empieza a contar desde ahora: la primera pasada es la próxima vez que toque
+        b["ultimo"] = datetime.now().astimezone().isoformat(timespec="seconds")
     cuentas.guardar_sistema(s)
 
 

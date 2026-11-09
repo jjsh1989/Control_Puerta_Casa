@@ -919,11 +919,11 @@ class Manejador(BaseHTTPRequestHandler):
             que = datos.get("accion")
             if que == "borrar":
                 e = camara.borrar_evento(cuenta, ident)
-                nk.registrar("Clip borrado", s.get("nombre") or s["usuario"], f"{e.get('tipo', '')} · {e.get('hora', '')[:16].replace('T', ' ')}")
+                nk.registrar("Clip borrado" if e.get("clip") else "Foto borrada", s.get("nombre") or s["usuario"], f"{e.get('tipo', '')} · {e.get('hora', '')[:16].replace('T', ' ')}")
                 return self._ok()
             if que in ("guardar", "no_guardar"):
                 e = camara.marcar_guardar(cuenta, ident, que == "guardar")
-                nk.registrar("Clip marcado «no borrar»" if que == "guardar" else "Quitada la marca «no borrar»",
+                nk.registrar(("Clip" if e.get("clip") else "Foto") + (" marcado «no borrar»" if e.get("clip") else " marcada «no borrar»") if que == "guardar" else "Quitada la marca «no borrar»",
                              s.get("nombre") or s["usuario"], f"{e.get('tipo', '')} · {e.get('hora', '')[:16].replace('T', ' ')}")
                 return self._ok({"guardar": bool(e.get("guardar"))})
             raise RuntimeError("Acción no válida.")
