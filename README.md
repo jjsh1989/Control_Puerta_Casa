@@ -35,7 +35,8 @@ Pensado para funcionar 24 h en un servidor doméstico (Proxmox + Docker) y entra
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)
 - ⭐ Cámara predeterminada por casa, 📷 avisos por movimiento o timbre, y cada cámara asignada a su casa (o oculta).
-- Pestaña **Cámara**: **directo** ordenado por casas y galería de avisos con foto y vídeo (los días que se guardan se eligen en Ajustes, con el espacio usado a la vista).
+- Pestaña **Cámara**: **directo** ordenado por casas y galería de avisos separada en **Clips** y **Fotos**. Cada aviso se puede **borrar** o marcar con 📌 **No borrar**.
+- **Borrado automático** (Ajustes → Cámaras → Espacio): por antigüedad (7 a 180 días) o **una vez por semana** (día y hora a elegir). Lo marcado con 📌 nunca se borra solo; también hay un botón para borrar ya todo lo no marcado.
 - **Controles en el directo**, solo los que admite cada modelo: **girar** (mantén pulsada la flecha para seguir girando), **sirena**, **foco**, **apagar la cámara** (modo privacidad) y **modo** (En casa, Fuera, Programado, Desactivado).
 - **Ajustes de cada cámara** (sensibilidad, grabación, luces, sonido…) y **qué detecciones avisan** (personas, mascotas, llanto, sonido, movimiento).
 - **Cámaras y cerradura**: al entrar con un código, apagar las cámaras de dentro o cambiar el modo; al bloquear desde el teclado, encenderlas o poner «Fuera». También se pueden **programar** por horas.

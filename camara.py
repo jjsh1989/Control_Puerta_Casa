@@ -196,11 +196,16 @@ def carpeta(cuenta):
 
 
 def guardar_evento(cuenta, evento):
-    with open(carpeta(cuenta) / "eventos.jsonl", "a", encoding="utf-8") as f:
+    with _CANDADO_EVENTOS, open(carpeta(cuenta) / "eventos.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(evento, ensure_ascii=False) + "\n")
 
 
 def actualizar_evento(cuenta, ident, **cambios):
+    with _CANDADO_EVENTOS:
+        _actualizar_evento(cuenta, ident, **cambios)
+
+
+def _actualizar_evento(cuenta, ident, **cambios):
     ruta = carpeta(cuenta) / "eventos.jsonl"
     if not ruta.exists():
         return
@@ -229,6 +234,143 @@ def leer_eventos(cuenta, limite=50):
     return list(reversed(salida))
 
 
+_CANDADO_EVENTOS = threading.Lock()
+
+
+def _todas_lineas(cuenta):
+    ruta = carpeta(cuenta) / "eventos.jsonl"
+    if not ruta.exists():
+        return ruta, []
+    salida = []
+    for l in ruta.read_text(encoding="utf-8").splitlines():
+        try:
+            salida.append(json.loads(l))
+        except ValueError:
+            pass
+    return ruta, salida
+
+
+def _escribir_eventos(ruta, eventos):
+    ruta.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in eventos), encoding="utf-8")
+
+
+def _borrar_archivos(cuenta, e):
+    for k in ("foto", "clip"):
+        n = e.get(k)
+        if n and RE_ARCHIVO.match(n):
+            (carpeta(cuenta) / n).unlink(missing_ok=True)
+
+
+def marcar_guardar(cuenta, ident, guardar):
+    """«No borrar»: el evento se salta la limpieza automática."""
+    with _CANDADO_EVENTOS:
+        ruta, evs = _todas_lineas(cuenta)
+        e = next((x for x in evs if x.get("id") == ident), None)
+        if not e:
+            raise RuntimeError("Ese evento ya no existe.")
+        if guardar:
+            e["guardar"] = True
+        else:
+            e.pop("guardar", None)
+        _escribir_eventos(ruta, evs)
+        return e
+
+
+def borrar_evento(cuenta, ident):
+    with _CANDADO_EVENTOS:
+        ruta, evs = _todas_lineas(cuenta)
+        e = next((x for x in evs if x.get("id") == ident), None)
+        if not e:
+            raise RuntimeError("Ese evento ya no existe.")
+        _borrar_archivos(cuenta, e)
+        _escribir_eventos(ruta, [x for x in evs if x is not e])
+        return e
+
+
+def vaciar(cuenta=None):
+    """Borra todo lo que no esté marcado como «no borrar» (de una casa o de todas). Devuelve cuántos eventos."""
+    n = 0
+    casas = [cuenta] if cuenta else [c.name for c in CARPETA_MEDIA.iterdir() if c.is_dir()] if CARPETA_MEDIA.exists() else []
+    for c in casas:
+        with _CANDADO_EVENTOS:
+            ruta, evs = _todas_lineas(c)
+            quedan = []
+            for e in evs:
+                if e.get("guardar"):
+                    quedan.append(e)
+                else:
+                    _borrar_archivos(c, e); n += 1
+            if evs:
+                _escribir_eventos(ruta, quedan)
+            protegidos = {e.get(k) for e in quedan for k in ("foto", "clip")}
+            for f in carpeta(c).iterdir():  # fotos de entradas y archivos sueltos
+                if f.suffix in (".jpg", ".mp4") and f.name not in protegidos:
+                    f.unlink(missing_ok=True)
+    return n
+
+
+DIAS_SEMANA = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
+
+def borrado():
+    """Cómo se borran solos: por antigüedad («dias») o todo lo no marcado una vez por semana («semanal»)."""
+    b = ajustes_sistema().get("borrado") or {}
+    try:
+        dia = max(0, min(6, int(b.get("dia", 0))))
+    except (TypeError, ValueError):
+        dia = 0
+    hora = b.get("hora") if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(b.get("hora") or "")) else "04:00"
+    modo = "semanal" if b.get("modo") == "semanal" else "dias"
+    return {"modo": modo, "dia": dia, "hora": hora, "ultimo": b.get("ultimo") or "", "dias": dias_guardar()}
+
+
+def texto_borrado():
+    b = borrado()
+    if b["modo"] == "semanal":
+        return f"Se borran solos cada {DIAS_SEMANA[b['dia']]} a las {b['hora']}, menos los marcados con 📌"
+    return f"Se borran solos a los {b['dias']} días, menos los marcados con 📌"
+
+
+def poner_borrado(modo, dia=None, hora=None):
+    if modo not in ("dias", "semanal"):
+        raise RuntimeError("Modo de borrado no válido.")
+    s = cuentas.leer_sistema()
+    b = s.setdefault("eufy", {}).setdefault("borrado", {})
+    b["modo"] = modo
+    if dia is not None:
+        if not 0 <= int(dia) <= 6:
+            raise RuntimeError("Día no válido.")
+        b["dia"] = int(dia)
+    if hora is not None:
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(hora)):
+            raise RuntimeError("Hora no válida (HH:MM).")
+        b["hora"] = hora
+    cuentas.guardar_sistema(s)
+
+
+def _toca_semanal(ahora=None):
+    b = borrado()
+    if b["modo"] != "semanal":
+        return False
+    ahora = ahora or datetime.now().astimezone()
+    h, m = map(int, b["hora"].split(":"))
+    objetivo = ahora.replace(hour=h, minute=m, second=0, microsecond=0) - timedelta(days=(ahora.weekday() - b["dia"]) % 7)
+    if objetivo > ahora:
+        objetivo -= timedelta(days=7)
+    # toca si la última pasada fue antes del momento programado más reciente (y este fue hace menos de un día)
+    try:
+        ultimo = datetime.fromisoformat(b["ultimo"]) if b["ultimo"] else None
+    except ValueError:
+        ultimo = None
+    return (ultimo is None or ultimo < objetivo) and ahora - objetivo < timedelta(days=1)
+
+
+def _marcar_semanal_hecho():
+    s = cuentas.leer_sistema()
+    s.setdefault("eufy", {}).setdefault("borrado", {})["ultimo"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    cuentas.guardar_sistema(s)
+
+
 def evento(cuenta, ident):
     return next((e for e in leer_eventos(cuenta, 2000) if e.get("id") == ident), None)
 
@@ -238,7 +380,7 @@ def ruta_archivo(cuenta, nombre):
         raise RuntimeError("Archivo no válido.")
     ruta = carpeta(cuenta) / nombre
     if not ruta.is_file():
-        raise RuntimeError(f"Ese archivo ya no existe (se borran a los {dias_guardar()} días).")
+        raise RuntimeError("Ese archivo ya no existe (se ha borrado).")
     return ruta
 
 
@@ -272,7 +414,10 @@ def uso_disco():
                         clips += f.stat().st_size
                 salida[c.name] = {"fotos": fotos, "clips": clips}
     libre = shutil.disk_usage(CARPETA_MEDIA if CARPETA_MEDIA.exists() else cuentas.DATOS)
-    return {"casas": salida, "libre": libre.free, "total": libre.total, "dias": dias_guardar()}
+    marcados = {c.name: sum(1 for e in _todas_lineas(c.name)[1] if e.get("guardar"))
+                for c in CARPETA_MEDIA.iterdir() if c.is_dir()} if CARPETA_MEDIA.exists() else {}
+    return {"casas": salida, "libre": libre.free, "total": libre.total, "dias": dias_guardar(),
+            "borrado": borrado(), "marcados": marcados}
 
 
 def limpiar_antiguos():
@@ -280,23 +425,19 @@ def limpiar_antiguos():
     limite = time.time() - DIAS * 86400
     if not CARPETA_MEDIA.exists():
         return
+    corte = (datetime.now().astimezone() - timedelta(days=DIAS)).isoformat()
     for c in CARPETA_MEDIA.iterdir():
         if not c.is_dir():
             continue
-        for f in c.iterdir():
-            if f.suffix in (".jpg", ".mp4") and f.stat().st_mtime < limite:
-                f.unlink(missing_ok=True)
-        ruta = c / "eventos.jsonl"
-        if ruta.exists():
-            corte = (datetime.now().astimezone() - timedelta(days=DIAS)).isoformat()
-            vivas = []
-            for l in ruta.read_text(encoding="utf-8").splitlines():
-                try:
-                    if json.loads(l).get("hora", "") >= corte:
-                        vivas.append(l)
-                except ValueError:
-                    pass
-            ruta.write_text("\n".join(vivas) + ("\n" if vivas else ""), encoding="utf-8")
+        with _CANDADO_EVENTOS:
+            ruta, evs = _todas_lineas(c.name)
+            vivas = [e for e in evs if e.get("guardar") or e.get("hora", "") >= corte]
+            if len(vivas) != len(evs):
+                _escribir_eventos(ruta, vivas)
+            protegidos = {e.get(k) for e in evs if e.get("guardar") for k in ("foto", "clip")}
+            for f in c.iterdir():
+                if f.suffix in (".jpg", ".mp4") and f.name not in protegidos and f.stat().st_mtime < limite:
+                    f.unlink(missing_ok=True)
 
 
 def url_evento(ident):
@@ -742,12 +883,18 @@ class Limpieza(threading.Thread):
         super().__init__(daemon=True)
 
     def run(self):
+        ultima = 0
         while True:
             try:
-                limpiar_antiguos()
+                if _toca_semanal():
+                    n = vaciar()
+                    _marcar_semanal_hecho()
+                    nk.log(f"Cámara: borrado semanal ({n} avisos)")
+                elif borrado()["modo"] == "dias" and time.time() - ultima > 6 * 3600:
+                    limpiar_antiguos(); ultima = time.time()
             except Exception as e:
                 nk.log(f"Cámara: limpieza ({e})")
-            time.sleep(6 * 3600)
+            time.sleep(600)
 
 
 # ---------------------------------------------------------------- lo que sabe hacer cada cámara

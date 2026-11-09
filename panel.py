@@ -759,6 +759,7 @@ class Manejador(BaseHTTPRequestHandler):
                     e = {k: v for k, v in e.items() if k in ("conectado", "sesion")}
                     e["dispositivos"] = [d for d in camara.estado()["dispositivos"] if d["cuenta"] == cuenta]
                 e["eventos"] = camara.leer_eventos(cuenta, min(int(params.get("limite", 40)), 300))
+                e["borrado_texto"] = camara.texto_borrado()
                 e["admin"] = admin
                 return self._ok(e)
             m = re.fullmatch(r"/api/admin/casa/([\w-]+)", ruta)
@@ -913,6 +914,19 @@ class Manejador(BaseHTTPRequestHandler):
             if texto:
                 nk.registrar("Cámara", s.get("nombre") or s["usuario"], texto)
             return self._ok({"texto": texto})
+        if ruta == "/api/camara/evento":
+            cuenta, ident = cuentas.cuenta_actual(), str(datos.get("id") or "")
+            que = datos.get("accion")
+            if que == "borrar":
+                e = camara.borrar_evento(cuenta, ident)
+                nk.registrar("Clip borrado", s.get("nombre") or s["usuario"], f"{e.get('tipo', '')} · {e.get('hora', '')[:16].replace('T', ' ')}")
+                return self._ok()
+            if que in ("guardar", "no_guardar"):
+                e = camara.marcar_guardar(cuenta, ident, que == "guardar")
+                nk.registrar("Clip marcado «no borrar»" if que == "guardar" else "Quitada la marca «no borrar»",
+                             s.get("nombre") or s["usuario"], f"{e.get('tipo', '')} · {e.get('hora', '')[:16].replace('T', ' ')}")
+                return self._ok({"guardar": bool(e.get("guardar"))})
+            raise RuntimeError("Acción no válida.")
         if ruta == "/api/camaras/auto":
             def limpia(r):
                 r = r or {}
@@ -1014,9 +1028,19 @@ class Manejador(BaseHTTPRequestHandler):
             nk.registrar("Ajuste de cámara", camara.CLIENTE.dispositivos[sn]["nombre"], f"{etq}: {v}")
             return self._ok()
         if ruta == "/api/admin/camara/dias":
-            camara.poner_dias_guardar(datos.get("dias"))
-            nk.registrar("Fotos y clips", "", f"Se guardan {camara.dias_guardar()} días")
+            if datos.get("dias") is not None:
+                camara.poner_dias_guardar(datos.get("dias"))
+            if datos.get("modo"):
+                camara.poner_borrado(datos["modo"], datos.get("dia"), datos.get("hora"))
+            nk.registrar("Fotos y clips", "", camara.texto_borrado())
             return self._ok()
+        if ruta == "/api/admin/camara/vaciar":
+            c = datos.get("cuenta") or None
+            if c and not cuentas.existe_cuenta(c):
+                raise RuntimeError("La casa no existe.")
+            n = camara.vaciar(c)
+            nk.registrar("Fotos y clips borrados", "", f"{n} avisos (se han conservado los marcados con 📌)")
+            return self._ok({"borrados": n})
         if ruta == "/api/admin/telegram":
             if datos.get("borrar"):
                 telegram.borrar_token()

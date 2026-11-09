@@ -276,6 +276,13 @@
   .directo.vivo { grid-column: 1 / -1; }
   .directo .vivo-chip { position: absolute; left: 8px; top: 8px; background: #d33; color: #fff; border-radius: 99px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
   .ev-cam .play { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.6); color: #fff; border-radius: 99px; padding: 2px 9px; font-size: 12px; }
+  .ev-cam .marca { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.6); color: #fff; border-radius: 99px; padding: 2px 8px; font-size: 12px; }
+  .seg-media { display: inline-flex; background: var(--bg2); border: 1px solid var(--line); border-radius: 99px; padding: 3px; gap: 2px; margin-bottom: 12px; }
+  .seg-media button { border: 0; background: none; box-shadow: none; border-radius: 99px; padding: 6px 14px; height: auto; font-weight: 600; color: var(--muted); }
+  .seg-media button.activo { background: var(--card); color: var(--text); box-shadow: var(--btn-sombra); }
+  .seg-media .n { font-weight: 500; opacity: .7; margin-left: 4px; }
+  .ev-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .ev-acciones button { flex: 1 1 140px; }
   .ev-cam .pie-ev { padding: 8px 10px; font-size: 13px; line-height: 1.35; }
   .ev-ver img, .ev-ver video { width: 100%; border-radius: 10px; display: block; background: #000; margin-top: 10px; max-height: 70vh; }
   .captcha-img { background: #fff; border-radius: 8px; padding: 6px; max-width: 100%; display: block; margin: 8px 0; }
@@ -637,8 +644,9 @@
             <button onclick="probarCamara(this)" id="camProbar"><svg class="i"><use href="#i-camara"/></svg>Probar aviso con clip</button>
             <button onclick="cargarCamara(this)" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Actualizar</button>
           </span></div>
-        <div class="ayuda" style="margin-bottom:10px">Fotos y clips de los avisos (movimiento, timbre y avisos de la puerta). Se borran solos a los 30 días.
+        <div class="ayuda" style="margin-bottom:10px">Fotos y clips de los avisos (movimiento, timbre y avisos de la puerta). <span id="camBorradoTexto">Se borran solos pasado un tiempo, menos los marcados con 📌</span>.
           Los avisos de movimiento se activan en Ajustes → Avisos de la puerta.</div>
+        <div class="seg-media" id="segMedia" role="tablist"></div>
         <div id="camEventos" class="eventos-cam"><div class="vacio">Cargando…</div></div>
       </div>
     </section>
@@ -1080,6 +1088,7 @@
   <h2 id="evTitulo">Evento</h2>
   <p class="muted peq" id="evTexto" style="margin:4px 0 0"></p>
   <div class="ev-ver" id="evMedia"></div>
+  <div class="ev-acciones" id="evAcciones"></div>
   <div class="pie"><button type="button" onclick="cerrarEvento()">Cerrar</button></div>
 </dialog>
 <dialog id="dlgInactividad">
@@ -2464,13 +2473,41 @@ async function cargarCamDisco() {
     ${Object.entries(d.casas).map(([c, x]) => `<div class="ajc"><div><b>${esc(d.nombres[c] || c)}</b><div class="muted peq">fotos ${MB(x.fotos)} · clips ${MB(x.clips)}</div></div><b>${MB(x.fotos + x.clips)}</b></div>`).join("") || '<div class="muted peq">Todavía no hay nada guardado.</div>'}
     <div class="muted peq" style="margin-top:8px">Disco del servidor: ${MB(d.libre)} libres de ${MB(d.total)}</div>
     <div class="disco-barra"><i style="width:${Math.round(100 * (1 - d.libre / d.total))}%"></i></div>
-    <div class="ajc"><div><b>Guardar fotos y clips durante</b><div class="muted peq">Lo más antiguo se borra solo.</div></div>
-      <select onchange="guardarDiasCam(this)">${[7, 15, 30, 60, 90, 180].map(n => `<option value="${n}" ${n === d.dias ? "selected" : ""}>${n} días</option>`).join("")}${[7, 15, 30, 60, 90, 180].includes(d.dias) ? "" : `<option selected>${d.dias} días</option>`}</select></div>
+    <label style="margin-top:12px">Borrado automático</label>
+    <div class="ajc"><div><b>Cómo se borran</b><div class="muted peq">Los marcados con 📌 «No borrar» nunca se borran solos.</div></div>
+      <select id="cdModo" onchange="pintarModoBorrado()"><option value="semanal" ${d.borrado.modo === "semanal" ? "selected" : ""}>Una vez por semana</option><option value="dias" ${d.borrado.modo === "dias" ? "selected" : ""}>Por antigüedad</option></select></div>
+    <div class="ajc" id="cdFilaDias"><div><b>Guardar durante</b><div class="muted peq">Lo más antiguo se borra solo.</div></div>
+      <select id="cdDias">${[7, 15, 30, 60, 90, 180].map(n => `<option value="${n}" ${n === d.dias ? "selected" : ""}>${n} días</option>`).join("")}${[7, 15, 30, 60, 90, 180].includes(d.dias) ? "" : `<option value="${d.dias}" selected>${d.dias} días</option>`}</select></div>
+    <div class="ajc" id="cdFilaSemana"><div><b>Cada semana, el</b><div class="muted peq">Se borra todo lo no marcado${d.borrado.ultimo ? ` · última vez: ${esc(fecha(d.borrado.ultimo))}` : ""}.</div></div>
+      <span style="display:flex; gap:6px"><select id="cdDia">${["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"].map((n, i) => `<option value="${i}" ${i === d.borrado.dia ? "selected" : ""}>${n}</option>`).join("")}</select>
+      <input type="time" id="cdHora" value="${esc(d.borrado.hora)}" style="width:auto"></span></div>
+    <div class="acciones" style="margin-top:10px; justify-content:space-between">
+      <button type="button" class="peligro" onclick="vaciarCam(this)">🗑 Borrar ahora todo lo no marcado</button>
+      <button type="button" class="principal" onclick="guardarDiasCam(this)">Guardar</button></div>
+    ${Object.values(d.marcados || {}).some(n => n) ? `<div class="muted peq" style="margin-top:6px">📌 Marcados para no borrar: ${Object.entries(d.marcados).filter(([, n]) => n).map(([c, n]) => `${esc(d.nombres[c] || c)} ${n}`).join(" · ")}</div>` : ""}
     ${d.sd?.length ? `<label style="margin-top:12px">Tarjeta de cada cámara</label>${d.sd.map(x => `<div class="ajc"><div><b>${esc(x.nombre)}</b><div class="disco-barra" style="width:160px; margin:4px 0 0"><i style="width:${Math.round(100 * (1 - x.libre_mb / x.total_mb))}%"></i></div></div><span class="muted peq">${MB(x.libre_mb * 1e6)} libres de ${MB(x.total_mb * 1e6)}</span></div>`).join("")}
       <div class="ayuda">Es normal que estén casi llenas: con grabación continua, la cámara borra sola lo más antiguo.</div>` : ""}`;
+  pintarModoBorrado();
 }
-async function guardarDiasCam(sel) {
-  try { await api("POST", "/api/admin/camara/dias", {dias: +sel.value}); aviso("Guardado"); } catch (e) { aviso("⚠️ " + e.message); }
+function pintarModoBorrado() {
+  const semanal = $("cdModo")?.value === "semanal";
+  $("cdFilaDias")?.classList.toggle("oculto", semanal);
+  $("cdFilaSemana")?.classList.toggle("oculto", !semanal);
+}
+async function guardarDiasCam(b) {
+  try {
+    b.disabled = true;
+    await api("POST", "/api/admin/camara/dias", {modo: $("cdModo").value, dias: +$("cdDias").value, dia: +$("cdDia").value, hora: $("cdHora").value});
+    aviso("Guardado"); await cargarCamDisco(); cargarCamara(null, true);
+  } catch (e) { aviso("⚠️ " + e.message); } finally { b.disabled = false; }
+}
+async function vaciarCam(b) {
+  if (!confirm("¿Borrar ahora todas las fotos y clips de todas las casas, menos los marcados con 📌? No se puede deshacer.")) return;
+  try {
+    b.disabled = true;
+    const r = (await api("POST", "/api/admin/camara/vaciar", {})).resultado;
+    aviso(`🗑 Borrados ${r.borrados} avisos`); await cargarCamDisco(); cargarCamara(null, true);
+  } catch (e) { aviso("⚠️ " + e.message); } finally { b.disabled = false; }
 }
 function aplicarCamaras() {
   const hay = camsCuenta().length > 0, admin = YO?.rol === "admin";
@@ -2492,27 +2529,61 @@ function pintarCamara() {
   $("camProbar").classList.toggle("oculto", !(c?.sesion && hay));
   if (!DIRECTO) pintarDirecto();
   const ev = c?.eventos || [];
-  $("camEventos").innerHTML = ev.length ? ev.map(e => `<button class="ev-cam" onclick="abrirEvento('${esc(e.id)}')">
-      <div class="foto">${e.foto ? `<img loading="lazy" src="${urlCam(e.foto)}" alt="">` : ico("camara")}${e.clip ? '<span class="play">▶ clip</span>' : ""}</div>
+  if (c?.borrado_texto) $("camBorradoTexto").textContent = c.borrado_texto;
+  const clips = ev.filter(e => e.clip), fotos = ev.filter(e => !e.clip && e.foto);
+  if (!clips.length && fotos.length && VISTA_MEDIA === "clips" && !VISTA_ELEGIDA) VISTA_MEDIA = "fotos";
+  $("segMedia").innerHTML = [["clips", "🎬 Clips", clips.length], ["fotos", "📷 Fotos", fotos.length]].map(([k, t, n]) =>
+    `<button type="button" role="tab" class="${VISTA_MEDIA === k ? "activo" : ""}" aria-selected="${VISTA_MEDIA === k}" onclick="verMedia('${k}')">${t}<span class="n">${n}</span></button>`).join("");
+  $("segMedia").classList.toggle("oculto", !ev.length);
+  const lista = VISTA_MEDIA === "clips" ? clips : fotos;
+  $("camEventos").innerHTML = lista.length ? lista.map(e => `<button class="ev-cam" onclick="abrirEvento('${esc(e.id)}')">
+      <div class="foto">${e.foto ? `<img loading="lazy" src="${urlCam(e.foto)}" alt="">` : ico("camara")}${e.guardar ? '<span class="marca" title="No se borra solo">📌</span>' : ""}${e.clip ? '<span class="play">▶ clip</span>' : ""}</div>
       <div class="pie-ev"><b>${esc(e.tipo)}</b><br><span class="muted">${esc(fecha(e.hora))}${e.camara ? " · " + esc(e.camara) : ""}</span></div></button>`).join("")
-    : `<div class="vacio">${hay ? "Todavía no hay fotos ni clips." : "No hay ninguna cámara conectada a esta cuenta."}</div>`;
+    : `<div class="vacio">${!hay ? "No hay ninguna cámara conectada a esta cuenta." : !ev.length ? "Todavía no hay fotos ni clips." : VISTA_MEDIA === "clips" ? "No hay clips guardados." : "No hay fotos sueltas (las de los clips están en Clips)."}</div>`;
 }
+let VISTA_MEDIA = "clips", VISTA_ELEGIDA = false;
+function verMedia(k) { VISTA_MEDIA = k; VISTA_ELEGIDA = true; pintarCamara(); }
 function abrirEvento(id) {
   const e = (CAMARA?.eventos || []).find(x => x.id === id);
-  if (!e) return aviso("Ese evento ya no está (se borran a los 30 días).");
+  if (!e) return aviso("Ese evento ya no está (se ha borrado).");
   $("evTitulo").textContent = e.tipo;
   $("evTexto").textContent = fecha(e.hora, true) + (e.camara ? " · " + e.camara : "");
   $("evMedia").innerHTML = (e.clip ? `<video controls playsinline autoplay muted src="${urlCam(e.clip)}"></video>` : "")
     + (e.foto ? `<img src="${urlCam(e.foto)}" alt="Foto">` : "")
     + (!e.clip && !e.foto ? '<div class="vacio">Sin foto ni clip.</div>' : "")
     + (!e.clip && e.foto && Date.now() - new Date(e.hora) < 120000 ? '<div class="ayuda">El clip tarda unos segundos en estar listo; pulsa Actualizar.</div>' : "");
+  pintarAccionesEvento(e);
   $("dlgEvento").showModal();
+}
+function pintarAccionesEvento(e) {
+  $("evAcciones").innerHTML = `<button type="button" onclick="marcarEvento('${esc(e.id)}', ${!e.guardar}, this)">${e.guardar ? "Quitar 📌 (se podrá borrar solo)" : "📌 No borrar"}</button>
+    <button type="button" class="peligro" onclick="borrarEvento('${esc(e.id)}', this)">🗑 Borrar</button>`
+    + (e.guardar ? '<div class="ayuda" style="flex-basis:100%; margin:0">Marcado: no se borra solo. Puedes borrarlo tú cuando quieras.</div>' : "");
+}
+async function marcarEvento(id, guardar, b) {
+  try {
+    b.disabled = true;
+    await api("POST", "/api/camara/evento", {id, accion: guardar ? "guardar" : "no_guardar"});
+    const e = (CAMARA?.eventos || []).find(x => x.id === id);
+    if (e) { if (guardar) e.guardar = true; else delete e.guardar; pintarAccionesEvento(e); }
+    pintarCamara(); aviso(guardar ? "📌 Marcado: no se borrará solo" : "Marca quitada");
+  } catch (err) { aviso("⚠️ " + err.message); b.disabled = false; }
+}
+async function borrarEvento(id, b) {
+  const e = (CAMARA?.eventos || []).find(x => x.id === id);
+  if (!confirm(`¿Borrar ${e?.clip && e?.foto ? "la foto y el clip" : e?.clip ? "el clip" : "la foto"} de «${e?.tipo || "este aviso"}»? No se puede deshacer.` + (e?.guardar ? "\n\nEstá marcado con 📌 «no borrar»." : ""))) return;
+  try {
+    b.disabled = true;
+    await api("POST", "/api/camara/evento", {id, accion: "borrar"});
+    if (CAMARA) CAMARA.eventos = (CAMARA.eventos || []).filter(x => x.id !== id);
+    cerrarEvento(); pintarCamara(); aviso("🗑 Borrado");
+  } catch (err) { aviso("⚠️ " + err.message); b.disabled = false; }
 }
 function verFotoEntrada(f, cuando) {
   $("evTitulo").textContent = "Foto de la cámara"; $("evTexto").textContent = cuando;
   $("evMedia").innerHTML = `<img src="${urlCam(f)}" alt="Foto">`; $("dlgEvento").showModal();
 }
-function cerrarEvento() { $("evMedia").innerHTML = ""; $("dlgEvento").close(); if (location.hash.startsWith("#evento=")) history.replaceState(null, "", location.pathname); }
+function cerrarEvento() { $("evMedia").innerHTML = ""; $("evAcciones").innerHTML = ""; $("dlgEvento").close(); if (location.hash.startsWith("#evento=")) history.replaceState(null, "", location.pathname); }
 async function abrirEventoDelEnlace() {
   const m = location.hash.match(/^#evento=([\w-]+)/);
   if (!m || !YO?.autenticado) return;
