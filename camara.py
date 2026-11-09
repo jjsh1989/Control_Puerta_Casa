@@ -29,7 +29,7 @@ CARPETA_CRED = cuentas.DATOS / "eufy"
 CARPETA_MEDIA = cuentas.DATOS / "camara"
 DIAS_GUARDAR = 30
 ESPERA_ENTRE_AVISOS = 120  # segundos entre avisos de movimiento de la misma cámara
-SEGUNDOS_CLIP = 12
+SEGUNDOS_CLIP = 15
 RE_ARCHIVO = re.compile(r"^[\w-]+\.(jpg|mp4)$")
 
 EVENTOS = {
@@ -683,7 +683,7 @@ class Cliente(threading.Thread):
                 c.setdefault("primero", time.time())
         try:
             self.unirse(sn, recibir)
-            fin = time.time() + 30
+            fin = time.time() + segundos + 25  # margen: la cámara tarda unos segundos en empezar a emitir
             while time.time() < fin:
                 if c.get("primero") and time.time() - c["primero"] >= segundos:
                     break
