@@ -150,6 +150,11 @@ def _texto(v, ops):
 
 # ---------------------------------------------------------------- accesos (apps, llaveros…)
 
+def es_del_panel(a):
+    """La autorización «Nuki Web» es la que usa la API (y por tanto este panel): no se toca."""
+    return (a.get("name") or "").strip().lower().startswith("nuki web")
+
+
 def accesos(cfg):
     n = cfg["nuki"]
     salida = []
@@ -161,7 +166,8 @@ def accesos(cfg):
             "tipo": a.get("type"), "tipo_texto": TIPOS_AUTH.get(a.get("type"), f"Otro (tipo {a.get('type')})"),
             "activo": bool(a.get("enabled", True)), "remoto": bool(a.get("remoteAllowed")),
             "usos": a.get("lockCount"), "ultimo": a.get("lastActiveDate"),
-            "horario": _horario_auth(a), "gestionable": a.get("type") in (0, 2),
+            "horario": _horario_auth(a), "del_panel": es_del_panel(a),
+            "gestionable": a.get("type") in (0, 2) and not es_del_panel(a),
         })
     salida.sort(key=lambda x: (x["tipo"], not x["activo"], x["nombre"].lower()))
     return salida
@@ -187,6 +193,8 @@ def cambiar_acceso(cfg, ident, accion):
     a = next((x for x in nuki.autorizaciones(n["smartlock_id"]) if str(x.get("id")) == str(ident)), None)
     if not a:
         raise RuntimeError("Ese acceso ya no existe.")
+    if es_del_panel(a):
+        raise RuntimeError("Este acceso es el que usa el panel para hablar con la cerradura: no se puede tocar desde aquí.")
     if a.get("type") not in (0, 2):
         raise RuntimeError("Este tipo de acceso se gestiona desde la app de Nuki.")
     nombre = (a.get("name") or "").strip()
@@ -299,3 +307,81 @@ def ejecutar(cfg, p):
     nuki.accion(n["smartlock_id"], num)
     nk.registrar("Programación hecha", nombre, f"{p['hora']}" + (f" · {p['nota']}" if p.get("nota") else ""))
     return f"⏰ {nombre}: hecho (programado a las {p['hora']})."
+
+
+# ---------------------------------------------------------------- control horario de la app de Nuki
+# La API web de Nuki no permite leer el «control horario» que se configura en la app: vive dentro de la
+# cerradura. Pero cada vez que se ejecuta queda en el registro como acción automática (trigger 3, sin
+# usuario). Repasando los últimos 30 días se ven las que se repiten a la misma hora.
+
+DIAS_REGISTRO = 30
+_CACHE_HORARIO = {}  # (token, id) -> (momento, lista)
+
+
+def _registro_paginado(nuki, sid, accion, desde, paginas=20):
+    import urllib.parse
+    ultimo, salida = None, []
+    for _ in range(paginas):
+        q = {"limit": 50, "action": accion, "fromDate": nk.fecha_iso(desde)}
+        if ultimo:
+            q["id"] = ultimo
+        _, ev = nk.peticion("GET", f"{nk.NUKI_API}/smartlock/{sid}/log?" + urllib.parse.urlencode(q),
+                            cabeceras=nuki._cab())
+        if not isinstance(ev, list) or not ev:
+            break
+        salida += ev
+        if len(ev) < 50:
+            break
+        ultimo = ev[-1].get("id")
+    return salida
+
+
+def programaciones_nuki(cfg, fresco=False):
+    """Programaciones hechas en la app de Nuki, deducidas del registro (se guardan 1 hora en memoria)."""
+    n = cfg.get("nuki") or {}
+    if not (n.get("token") and n.get("smartlock_id")):
+        return []
+    clave = (n["token"], str(n["smartlock_id"]))
+    m, l = _CACHE_HORARIO.get(clave, (0, None))
+    if l is not None and not fresco and time.time() - m < 3600:
+        return l
+    nuki = nk.Nuki(n["token"])
+    ahora = datetime.now().astimezone()
+    desde = ahora - timedelta(days=DIAS_REGISTRO)
+    nombres = {1: "desbloquear", 2: "bloquear", 3: "abrir", 4: "lockngo"}
+    salida = []
+    for num, accion in nombres.items():
+        momentos = []
+        for e in _registro_paginado(nuki, n["smartlock_id"], num, desde):
+            if e.get("trigger") == 3 and not e.get("authId") and e.get("state", 0) == 0:
+                try:
+                    momentos.append(datetime.fromisoformat(str(e["date"]).replace("Z", "+00:00")).astimezone())
+                except (KeyError, ValueError):
+                    pass
+        # agrupar por hora del día (±3 min: la cerradura a veces lo hace un minuto tarde)
+        grupos = []
+        for t in sorted(momentos, key=lambda t: t.hour * 60 + t.minute):
+            mm = t.hour * 60 + t.minute
+            if grupos and mm - grupos[-1]["base"] <= 3:
+                grupos[-1]["veces"].append(t)
+            else:
+                grupos.append({"base": mm, "veces": [t]})
+        for g in grupos:
+            veces = g["veces"]
+            if len({t.date() for t in veces}) < 3:
+                continue  # algo puntual, no una programación
+            horas = {}
+            for t in veces:
+                horas[f"{t:%H:%M}"] = horas.get(f"{t:%H:%M}", 0) + 1
+            ultimo = max(veces)
+            salida.append({
+                "accion": accion, "hora": max(horas, key=horas.get),
+                "dias": sorted({t.weekday() for t in veces}), "veces": len({t.date() for t in veces}),
+                "ultimo": ultimo.isoformat(timespec="minutes"),
+                "reciente": ahora - ultimo < timedelta(days=8),
+            })
+    salida.sort(key=lambda p: p["hora"])
+    for p in salida:
+        p["texto"] = f"{ACCIONES_PROG.get(p['accion'], (0, p['accion']))[1]} · {nk.texto_dias(p['dias'])} a las {p['hora']}"
+    _CACHE_HORARIO[clave] = (time.time(), salida)
+    return salida

@@ -730,6 +730,11 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == "/api/programaciones":
                 l = cfg.get("programaciones") or []
                 return self._ok([{**p, "texto": nuki_extra.texto_prog(p)} for p in l])
+            if ruta == "/api/programaciones/nuki":
+                try:
+                    return self._ok(nuki_extra.programaciones_nuki(cfg, fresco=params.get("fresco") == "1"))
+                except Exception as e:
+                    raise RuntimeError(f"No se pudo leer el registro de la cerradura: {e}")
             if ruta == "/api/admin/nuki/ajustes" and admin:
                 return self._ok(nuki_extra.leer_ajustes(cfg))
             if ruta == "/api/admin/nuki/accesos" and admin:
