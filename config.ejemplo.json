@@ -1,0 +1,38 @@
+{
+  "nuki": {
+    "token": "PEGA_AQUI_TU_TOKEN_DE_NUKI_WEB",
+    "smartlock_id": 123456789
+  },
+  "dias_validez": 7,
+  "prefijo_nombre": "Auto",
+  "mensaje": "Hola {nombre}, tu nuevo código de acceso a la puerta es {codigo}. Es válido hasta el {hasta}.",
+  "whatsapp": {
+    "proveedor": "enlace",
+    "twilio": {
+      "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "auth_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "numero_origen": "+14155238886"
+    },
+    "waha": {
+      "url": "http://127.0.0.1:3000",
+      "api_key": "",
+      "sesion": "default"
+    }
+  },
+  "destinatarios": [
+    {
+      "id": "maria",
+      "nombre": "María",
+      "telefono": "+34600111222",
+      "automatico": true,
+      "callmebot_apikey": ""
+    },
+    {
+      "id": "limpieza",
+      "nombre": "Servicio de limpieza",
+      "telefono": "+34600333444",
+      "automatico": false
+    }
+  ],
+  "mensaje_invitado": "Código de acceso temporal: {codigo}. Válido hasta el {hasta}. Es solo para esta visita: por favor, no lo compartas."
+}

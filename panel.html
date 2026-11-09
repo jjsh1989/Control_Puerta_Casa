@@ -1,0 +1,2208 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Puerta">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex">
+<title>Puerta · Códigos de acceso</title>
+<script>
+  // Aplica el tema guardado antes de pintar, para que no haya parpadeo
+  try { const t = localStorage.getItem("tema"); if (t === "claro" || t === "oscuro") document.documentElement.dataset.tema = t; } catch (e) {}
+</script>
+<style>
+  :root {
+    --bg: #f3f4f1; --bg2: #eceee9; --card: #ffffff; --text: #17201b; --muted: #66706a; --line: #e2e5df;
+    --accent: #1f6f4a; --accent-2: #2a8a5d; --accent-soft: #e4f1ea; --accent-text: #fff;
+    --danger: #b42318; --danger-soft: #fdecea; --warn: #8a5a00; --warn-soft: #fff4d9;
+    --shadow: 0 1px 2px rgba(16,24,20,.05), 0 4px 16px rgba(16,24,20,.05);
+    --radius: 14px; --btn-sombra: 0 1px 2px rgba(16,24,20,.06); color-scheme: light;
+  }
+  /* Modo noche: automático (según el sistema) salvo que se elija «claro»; o forzado con «oscuro» */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-tema="claro"]) {
+      --bg: #101412; --bg2: #161b18; --card: #1a201c; --text: #e8ece9; --muted: #95a199; --line: #2a322d;
+      --accent: #4fbf8a; --accent-2: #63d39d; --accent-soft: #1d3428; --accent-text: #0b1a12;
+      --danger: #f2877d; --danger-soft: #3a1e1b; --warn: #f0cf7a; --warn-soft: #362c12;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25); --btn-sombra: 0 1px 2px rgba(0,0,0,.35); color-scheme: dark;
+    }
+  }
+  :root[data-tema="oscuro"] {
+    --bg: #101412; --bg2: #161b18; --card: #1a201c; --text: #e8ece9; --muted: #95a199; --line: #2a322d;
+    --accent: #4fbf8a; --accent-2: #63d39d; --accent-soft: #1d3428; --accent-text: #0b1a12;
+    --danger: #f2877d; --danger-soft: #3a1e1b; --warn: #f0cf7a; --warn-soft: #362c12;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25); --btn-sombra: 0 1px 2px rgba(0,0,0,.35); color-scheme: dark;
+  }
+  html { transition: background-color .25s; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  svg.i { width: 18px; height: 18px; flex: none; vertical-align: -4px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .oculto { display: none !important; }
+
+  /* ---------- barra superior */
+  .barra { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line); }
+  .barra-in { max-width: 1040px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .marca { display: flex; gap: 10px; align-items: center; font-weight: 700; font-size: 17px; margin-right: auto; }
+  .logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; display: grid; place-items: center; }
+  .logo svg { width: 18px; height: 18px; }
+  .cuenta-sel { width: auto; max-width: 220px; font: inherit; font-size: 14px; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+  .usuario-btn { display: flex; gap: 8px; align-items: center; }
+  nav.pestanas { max-width: 1040px; margin: 0 auto; padding: 4px 12px 8px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  nav.pestanas button { border: 0; background: none; box-shadow: none; color: var(--muted); padding: 7px 13px; height: auto; font: inherit; font-weight: 550;
+    border-radius: 99px; cursor: pointer; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+  nav.pestanas button:hover { color: var(--text); background: var(--bg2); transform: none; }
+  nav.pestanas button.activa { color: var(--accent); background: var(--accent-soft); }
+
+  /* ---------- selector día / noche */
+  .tema { display: inline-flex; padding: 3px; gap: 2px; background: var(--bg2); border: 1px solid var(--line); border-radius: 99px; }
+  .tema button { border: 0; background: none; box-shadow: none; width: 30px; height: 30px; padding: 0; justify-content: center; border-radius: 99px; color: var(--muted); }
+  .tema button:hover { color: var(--text); background: none; transform: none; }
+  .tema button.activo { background: var(--card); color: var(--text); box-shadow: var(--btn-sombra); }
+  .tema svg.i { width: 16px; height: 16px; vertical-align: 0; }
+  .acceso .tema { position: fixed; top: 14px; right: 14px; }
+
+  main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 80px; }
+  h2 { font-size: 17px; margin: 0; }
+  h3 { font-size: 14px; margin: 18px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; margin-bottom: 16px; }
+  .cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .muted { color: var(--muted); }
+  .peq { font-size: 13px; }
+
+  /* ---------- botones */
+  button, .boton { font: inherit; font-size: 14px; font-weight: 550; border: 1px solid var(--line); background: var(--card); color: var(--text);
+    height: 36px; padding: 0 14px; border-radius: 10px; cursor: pointer; text-decoration: none; display: inline-flex; gap: 7px; align-items: center;
+    justify-content: center; white-space: nowrap; box-shadow: var(--btn-sombra); -webkit-tap-highlight-color: transparent;
+    transition: border-color .15s, background-color .15s, color .15s, transform .1s, box-shadow .15s; }
+  button:hover, .boton:hover { border-color: color-mix(in srgb, var(--muted) 60%, var(--line)); background: color-mix(in srgb, var(--bg2) 50%, var(--card)); }
+  button:active:not(:disabled) { transform: translateY(1px) scale(.98); }
+  button:focus-visible, .boton:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .principal { background: linear-gradient(180deg, var(--accent-2), var(--accent)) !important; color: var(--accent-text) !important;
+    border-color: var(--accent) !important; font-weight: 650;
+    box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.15), 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .principal:hover { filter: brightness(1.06); }
+  .peligro { color: var(--danger) !important; }
+  button.peligro:not(.fantasma) { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); box-shadow: none; }
+  button.peligro:hover { background: var(--danger-soft) !important; border-color: color-mix(in srgb, var(--danger) 45%, transparent) !important; }
+  .fantasma { border-color: transparent; background: transparent; box-shadow: none; }
+  .fantasma:hover { background: var(--bg2); border-color: transparent; }
+  .icono-btn { width: 36px; padding: 0; border-radius: 10px; }
+  button:disabled { opacity: .55; cursor: progress; transform: none; }
+  .acciones { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  /* acciones de cada persona: botones de texto a la izquierda, iconos agrupados a la derecha */
+  .herramientas { display: inline-flex; gap: 2px; margin-left: auto; padding: 2px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); }
+  .herramientas .icono-btn { width: 32px; height: 32px; border-radius: 9px; color: var(--muted); }
+  .herramientas .icono-btn:hover { background: var(--card); color: var(--text); box-shadow: var(--btn-sombra); }
+  .herramientas .icono-btn.peligro:hover { background: var(--danger-soft) !important; }
+  .usuario-btn { padding: 0 10px; }
+  .nombre-seccion { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; font-size: 13px; font-weight: 650; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .05em; }
+  .nombre-seccion:first-child { margin-top: 0; }
+  #tab-ajustes .card { scroll-margin-top: 120px; }
+  .acordeon { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; background: var(--card); overflow: hidden; scroll-margin-top: 120px; }
+  .acordeon-cab { width: 100%; height: auto; min-height: 52px; padding: 10px 14px; border: 0; border-radius: 0; box-shadow: none;
+    background: none; justify-content: flex-start; gap: 8px; flex-wrap: wrap; text-align: left; }
+  .acordeon-cab:hover { background: var(--bg2); border-color: transparent; }
+  .acordeon-cab:active:not(:disabled) { transform: none; }
+  .acordeon-nom { font-size: 15px; font-weight: 650; margin-right: 4px; }
+  .acordeon .flecha { transition: transform .2s; color: var(--muted); }
+  .acordeon.abierta .flecha { transform: rotate(90deg); color: var(--accent); }
+  .acordeon.abierta { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+  .acordeon.abierta .acordeon-cab { border-bottom: 1px solid var(--line); }
+  .acordeon-cuerpo { padding: 14px; background: var(--bg); animation: desplegar .2s ease-out; }
+  @keyframes desplegar { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .canales { display: flex; gap: 6px; flex-wrap: wrap; }
+  .canal { margin: 0; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 99px;
+    background: var(--card); color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; user-select: none; }
+  .canal input { display: none; }
+  .canal:has(input:checked) { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--accent); }
+  .tg-estado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+  .enlace-copia { display: flex; gap: 6px; margin: 10px 0; }
+  .enlace-copia input { font: 13px ui-monospace, Menlo, monospace; }
+
+  /* ---------- reglas de avisos */
+  .regla { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg); }
+  .regla.on { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 35%, var(--bg)); }
+  .regla-cab { display: flex; align-items: center; gap: 10px; margin: 0; cursor: pointer; color: var(--text); font-size: 14px; }
+  .regla-cab input { width: auto; accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
+  .regla-cab b { font-weight: 650; }
+  .regla-cab .muted { font-weight: 400; }
+  .regla-cuerpo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 2px 28px; font-size: 13px; color: var(--muted); }
+  .regla-cuerpo select, .regla-cuerpo input[type=time], .regla-cuerpo input[type=number] { width: auto; padding: 5px 8px; font-size: 13px; }
+  .regla-cuerpo input[type=number] { width: 60px; }
+  .dias { display: inline-flex; gap: 3px; }
+  .dia { margin: 0; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 99px; border: 1px solid var(--line);
+    background: var(--card); font-size: 12px; font-weight: 650; color: var(--muted); cursor: pointer; user-select: none; }
+  .dia input { display: none; }
+  .dia:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .regla.apagada .regla-cuerpo { display: none; }
+  .regla.no-disponible { opacity: .6; }
+
+  /* ---------- tarjetas plegables de Ajustes */
+  .card.plegable { padding: 0; }
+  .grupos-ajustes { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .grupos-ajustes button { border-radius: 99px; }
+  .grupos-ajustes button.activa { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  #tab-ajustes [data-grupo].fuera-grupo { display: none !important; }
+  .subcard { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; background: var(--bg); }
+  .plegable-cab { display: flex; align-items: center; gap: 10px; padding: 16px 18px; cursor: pointer; border-radius: var(--radius); user-select: none; }
+  .plegable-cab:hover { background: var(--bg2); }
+  .plegable-cab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .plegable-cab > .cab, .plegable-cab > h2 { flex: 1; margin: 0 !important; }
+  .plegable-cab .flecha { color: var(--muted); transition: transform .2s; }
+  .card.plegable.abierta { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+  .card.plegable.abierta > .plegable-cab { border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; }
+  .card.plegable.abierta .plegable-cab .flecha { transform: rotate(90deg); color: var(--accent); }
+  .plegable-cuerpo { padding: 4px 18px 18px; animation: desplegar .2s ease-out; }
+  .card.plegable:not(.abierta) > .plegable-cuerpo { display: none; }
+  .plegable-cuerpo > .pie-guardar { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .fila-seccion { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .fila-seccion:first-child { border-top: 0; }
+  .fila-seccion .nom { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .nombre-seccion::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .nombre-seccion .chip { text-transform: none; letter-spacing: 0; }
+
+  /* ---------- resumen */
+  .resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .dato { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+  .dato .n { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .dato .t { color: var(--muted); font-size: 13px; }
+
+  .dato .t svg.i { width: 14px; height: 14px; vertical-align: -2px; }
+  .pila { display: flex; align-items: center; gap: 10px; }
+  .pila-barra { flex: 1; height: 8px; border-radius: 99px; background: var(--bg2); overflow: hidden; min-width: 40px; }
+  .pila-barra > i { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width .4s; }
+  .dato.baja .n, .dato.baja .t b { color: var(--warn); } .dato.baja .pila-barra > i { background: var(--warn); }
+  .dato.critica .n, .dato.critica .t b { color: var(--danger); } .dato.critica .pila-barra > i { background: var(--danger); }
+  .dato.critica { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+
+  /* ---------- personas */
+  .personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .persona { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; background: var(--card); display: flex; flex-direction: column; gap: 12px; }
+  .persona-cab { display: flex; gap: 12px; align-items: center; }
+  .avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; flex: none; }
+  .nombre { font-weight: 650; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+  .chip { font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--bg2); color: var(--muted); white-space: nowrap; }
+  .chip.on { background: var(--accent-soft); color: var(--accent); }
+  .chip.mal { background: var(--danger-soft); color: var(--danger); }
+  .chip.aviso { background: var(--warn-soft); color: var(--warn); padding: 1px 8px; margin: 0; font-size: 12px; border-radius: 99px; }
+  .chip svg.i { width: 13px; height: 13px; vertical-align: -2px; }
+  .chips { align-items: center; }
+  .secreto { display: flex; align-items: center; gap: 8px; background: var(--bg2); border-radius: 10px; padding: 8px 10px; }
+  .secreto .valor { font: 600 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 2px; flex: 1; }
+  .secreto .etq { font-size: 12px; color: var(--muted); width: 64px; }
+  .secreto.tel .valor { font-size: 14px; letter-spacing: .5px; font-weight: 500; }
+  .invitados { border-top: 1px dashed var(--line); padding-top: 10px; font-size: 13px; display: grid; gap: 6px; }
+  .invitado { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .persona .acciones { margin-top: auto; }
+  .vacio { color: var(--muted); padding: 28px 8px; text-align: center; }
+  .eventos-cam { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .ev-cam { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg2); cursor: pointer; text-align: left; padding: 0; height: auto; display: block; box-shadow: none; }
+  .ev-cam .foto { aspect-ratio: 16/9; background: var(--line) center/cover no-repeat; display: grid; place-items: center; color: var(--muted); position: relative; }
+  .ev-cam .foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .casa-cam { margin: 4px 0 14px; }
+  .cam-disp > label { flex: 1 1 200px; min-width: 0; margin: 0; }
+  .cam-disp input[type=checkbox], .cam-disp input[type=radio] { width: auto; flex: none; margin: 0; }
+  .otra-casa summary { cursor: pointer; padding: 10px 0; border-top: 1px solid var(--line); }
+  .otra-casa[open] summary { margin-bottom: 8px; }
+  .casa-cam h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .directo { position: relative; }
+  .directo.vivo { grid-column: 1 / -1; }
+  .directo .vivo-chip { position: absolute; left: 8px; top: 8px; background: #d33; color: #fff; border-radius: 99px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+  .ev-cam .play { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.6); color: #fff; border-radius: 99px; padding: 2px 9px; font-size: 12px; }
+  .ev-cam .pie-ev { padding: 8px 10px; font-size: 13px; line-height: 1.35; }
+  .ev-ver img, .ev-ver video { width: 100%; border-radius: 10px; display: block; background: #000; margin-top: 10px; max-height: 70vh; }
+  .captcha-img { background: #fff; border-radius: 8px; padding: 6px; max-width: 100%; display: block; margin: 8px 0; }
+  .puerta-estado { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .puerta-estado .estado { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 15px; }
+  .puerta-estado .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cam-disp { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line); }
+
+  /* ---------- formularios */
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; font-weight: 500; }
+  input, select, textarea { width: 100%; font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 0; border-color: var(--accent); }
+  textarea { min-height: 72px; resize: vertical; }
+  .rejilla { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .rejilla3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0 12px; }
+  .ayuda { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .interruptor { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin: 0; cursor: pointer; }
+  .interruptor input { width: auto; accent-color: var(--accent); }
+  .filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .filtros select, .filtros input:not([type=checkbox]) { width: auto; min-width: 150px; }
+  .aviso { background: var(--warn-soft); color: var(--warn); padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; }
+  .error { background: var(--danger-soft); color: var(--danger); padding: 10px 12px; border-radius: 10px; margin-top: 12px; font-size: 14px; }
+
+  /* ---------- tablas */
+  .tabla { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr.mal td { background: var(--danger-soft); }
+  tr.noche td:first-child::after { content: " 🌙"; }
+
+  /* ---------- pasos WAHA */
+  .paso { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+  .paso:first-child { border-top: 0; }
+  .paso .ico { font-size: 18px; text-align: center; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12px; max-height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+
+  /* ---------- acceso */
+  .acceso { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+  .acceso .card { width: min(400px, 100%); padding: 28px; }
+  .acceso .logo { width: 48px; height: 48px; border-radius: 14px; margin-bottom: 14px; }
+  .acceso .logo svg { width: 24px; height: 24px; }
+  .acceso h1 { font-size: 22px; margin: 0 0 4px; }
+
+  /* ---------- diálogos y avisos */
+  dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--text);
+    width: min(480px, calc(100vw - 32px)); padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  dialog::backdrop { background: rgba(10,15,12,.45); backdrop-filter: blur(2px); }
+  dialog h2 { margin-bottom: 4px; }
+  .pie { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .codigo-grande { font: 700 36px/1.1 ui-monospace, Menlo, monospace; letter-spacing: 6px; margin: 10px 0 4px; }
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 10px); background: var(--text); color: var(--bg);
+    padding: 10px 16px; border-radius: 10px; opacity: 0; transition: .2s; pointer-events: none; max-width: calc(100vw - 32px); z-index: 20; box-shadow: var(--shadow); }
+  #toast.ver { opacity: 1; transform: translate(-50%, 0); }
+  .menu { position: relative; }
+  .menu-lista { position: absolute; right: 0; top: calc(100% + 6px); background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow); min-width: 220px; padding: 6px; z-index: 10; }
+  .menu-lista button { width: 100%; border: 0; justify-content: flex-start; background: none; }
+  .menu-lista button:hover { background: var(--bg2); }
+  .menu-movil { display: none; }
+  .menu-sesion { padding: 6px 10px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+  .menu-sesion label { font-size: 12px; margin: 0 0 4px; }
+  .menu-sesion select { font-size: 14px; }
+  .reloj { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--warn); font-weight: 600; }
+  .menu-lista .quien { padding: 8px 10px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+
+  @media (max-width: 640px) {
+    /* --- cabecera compacta en una sola fila */
+    html { -webkit-text-size-adjust: 100%; }
+    body { -webkit-tap-highlight-color: transparent; }
+    .barra { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); padding-top: env(safe-area-inset-top); }
+    .barra-in { padding: 8px 12px; gap: 8px; flex-wrap: nowrap; }
+    .marca { font-size: 16px; gap: 8px; min-width: 0; }
+    .logo { width: 30px; height: 30px; border-radius: 9px; }
+    .cuenta-sel { max-width: 150px; min-width: 0; padding: 6px 8px; font-size: 14px; text-overflow: ellipsis; }
+    .usuario-btn { padding: 0 8px; height: 36px; }
+    .menu-movil { display: block; }
+    .menu-lista { position: fixed; right: 8px; left: 8px; top: calc(54px + env(safe-area-inset-top)); min-width: 0; }
+    .menu-lista button { min-height: 44px; }
+    /* --- pestañas como barra inferior de app */
+    nav.pestanas { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; max-width: none; margin: 0; padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+      background: var(--card); border-top: 1px solid var(--line); gap: 0; justify-content: space-around; overflow: visible; }
+    nav.pestanas button { flex: 1 1 0; flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 11px; border-radius: 10px; min-width: 0; }
+    nav.pestanas button svg.i { width: 22px; height: 22px; }
+    nav.pestanas button.activa { background: none; }
+    nav.pestanas button.activa svg.i { background: var(--accent-soft); border-radius: 99px; padding: 2px 12px; box-sizing: content-box; }
+    main { padding: 12px 12px calc(86px + env(safe-area-inset-bottom)); }
+    #toast { bottom: calc(78px + env(safe-area-inset-bottom)); }
+    /* --- iOS: sin zoom al escribir (los campos necesitan 16 px) */
+    input, select, textarea { font-size: 16px !important; }
+    /* --- contenido */
+    .card { padding: 14px; border-radius: 14px; }
+    .resumen { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .dato { padding: 10px 12px; }
+    .dato .n { font-size: 22px; }
+    #rProxima { font-size: 14px !important; padding-top: 4px !important; }
+    .puerta-estado .acciones { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+    .puerta-estado .acciones button { flex-direction: column; gap: 3px; padding: 8px 4px; height: auto; min-height: 58px; min-width: 0;
+      justify-content: center; font-size: 12px; line-height: 1.15; white-space: normal; text-align: center; }
+    .menu-lista .tema { display: inline-flex; }
+    .menu-lista .tema button { width: 38px; height: 34px; min-height: 0; justify-content: center; padding: 0; }
+    .cab { flex-wrap: wrap; gap: 8px; }
+    .cab .acciones { width: 100%; }
+    .eventos-cam { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .ev-cam .pie-ev { padding: 6px 8px; font-size: 12px; }
+    .grupos-ajustes { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 12px; padding: 0 12px; }
+    .grupos-ajustes button { flex: none; }
+    .plegable-cab { padding: 14px; min-height: 52px; }
+    dialog { width: calc(100vw - 16px); max-width: none !important; margin: auto auto calc(8px + env(safe-area-inset-bottom)); max-height: calc(100dvh - 24px); overflow: auto; padding: 18px 16px; }
+    .rejilla, .rejilla3 { grid-template-columns: 1fr; }
+    .personas { grid-template-columns: 1fr; }
+    .paso { grid-template-columns: 30px 1fr; }
+    .paso .acciones { grid-column: 2; }
+    .ocultar-movil { display: none; }
+    /* --- cabeceras de tarjeta: botón principal primero y a lo ancho */
+    .cab .acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cab .acciones > .principal { grid-column: 1 / -1; order: -1; justify-content: center; }
+    .cab .acciones > button { justify-content: center; min-width: 0; }
+    .cab .acciones > button:only-child { grid-column: 1 / -1; }
+    .cab > select { width: 100% !important; }
+    /* --- fichas de persona */
+    .acordeon-cuerpo { padding: 10px 0 4px; background: none; }
+    .persona { padding: 14px; gap: 10px; }
+    .persona .acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .persona .acciones > button { justify-content: center; min-width: 0; }
+    .persona .acciones .herramientas { grid-column: 1 / -1; margin: 0; display: flex; justify-content: space-around; }
+    .persona .acciones .herramientas .icono-btn { width: 44px; height: 40px; }
+    .secreto .valor { font-size: 17px; letter-spacing: 1.5px; }
+    /* --- filtros a ancho completo */
+    .filtros { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .filtros select, .filtros input:not([type=checkbox]) { width: 100%; min-width: 0; }
+    .filtros .interruptor { display: flex; align-items: center; gap: 8px; }
+    .filtros input[type=checkbox] { width: auto; }
+    /* --- tablas de Entradas, Historial y Códigos como tarjetas apiladas */
+    #registro, #historial, #codigos { overflow: visible; }
+    #registro table, #historial table, #codigos table,
+    #registro tbody, #historial tbody, #codigos tbody { display: block; width: 100%; }
+    #registro thead, #historial thead, #codigos thead { display: none; }
+    #registro tr, #historial tr, #codigos tr { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline;
+      padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    #registro td, #historial td, #codigos td { display: block; padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; }
+    #registro td:first-child, #historial td:first-child { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+    #codigos td:first-child { flex-basis: auto; font-size: 17px; }
+    #registro td:nth-child(2), #historial td:nth-child(2), #codigos td:nth-child(2) { font-weight: 600; }
+    #registro td:last-child, #codigos td:last-child { margin-left: auto; }
+    #historial td:nth-child(4) { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+    #codigos td:nth-child(4), #codigos td:nth-child(5) { font-size: 12px; color: var(--muted); }
+    #registro tr.mal, #historial tr.mal, #codigos tr.mal { background: var(--danger-soft); border-color: transparent; }
+    #registro tr.mal td, #historial tr.mal td, #codigos tr.mal td { background: none; }
+    .cab .acciones > button { font-size: 14px; padding-left: 8px; padding-right: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SVG: iconos -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-candado" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-ojo" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-ojo-no" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+  <symbol id="i-renovar" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+  <symbol id="i-mas" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-invitado" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M19 8v6M16 11h6"/></symbol>
+  <symbol id="i-editar" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-papelera" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+  <symbol id="i-bloquear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+  <symbol id="i-whatsapp" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20l1.2-5.2A8.5 8.5 0 1 1 21 11.5z"/></symbol>
+  <symbol id="i-usuario" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-personas" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></symbol>
+  <symbol id="i-puerta" viewBox="0 0 24 24"><path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17"/><path d="M3 21h18"/><circle cx="15" cy="12" r="1"/></symbol>
+  <symbol id="i-lista" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-ajustes" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-boveda" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5V7M12 17v-1.5M15.5 12H17M7 12h1.5"/></symbol>
+  <symbol id="i-salir" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-luna" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-bateria" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/></symbol>
+  <symbol id="i-correo" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
+  <symbol id="i-telegram" viewBox="0 0 24 24"><path d="M21.5 4.5L2.5 11.8l6 2.2 2.3 6.5 3.2-4.1 4.9 3.6z"/><path d="M8.5 14l9-7"/></symbol>
+  <symbol id="i-copiar" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+  <symbol id="i-camara" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/></symbol>
+  <symbol id="i-llave" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M18 5l2 2"/></symbol>
+</svg>
+
+<!-- ============ PANTALLA DE ACCESO ============ -->
+<div id="pantallaAcceso" class="acceso oculto">
+  <div class="tema" role="group" aria-label="Tema"></div>
+  <div class="card">
+    <div class="logo"><svg class="i"><use href="#i-candado"/></svg></div>
+    <h1 id="accesoTitulo">Entrar</h1>
+    <p class="muted peq" id="accesoTexto" style="margin:0 0 6px">Gestión de códigos de la puerta.</p>
+
+    <form id="formEntrar" onsubmit="entrar(event)">
+      <label for="e_usuario">Usuario</label>
+      <input id="e_usuario" autocomplete="username" autocapitalize="none" required>
+      <label for="e_password">Contraseña</label>
+      <input id="e_password" type="password" autocomplete="current-password" required>
+      <div class="pie"><button class="principal" type="submit" style="width:100%; justify-content:center">Entrar</button></div>
+      <p class="peq" style="text-align:center; margin:10px 0 0"><a href="#" onclick="verRecuperar(true); return false">¿Has olvidado la contraseña o te has quedado bloqueado?</a></p>
+    </form>
+
+    <form id="formRecuperar" class="oculto" onsubmit="recuperar(event)">
+      <p class="muted peq" style="margin:0 0 4px">Te enviaremos un código al <b>Telegram</b> vinculado a tu casa (y, si eres el administrador, también al <b>WhatsApp principal</b>).</p>
+      <label for="r_usuario">Usuario</label>
+      <input id="r_usuario" autocomplete="username" autocapitalize="none" required>
+      <div id="rPaso2" class="oculto">
+        <label for="r_codigo">Código recibido</label>
+        <input id="r_codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+        <label for="r_nueva">Contraseña nueva (mín. 10 caracteres)</label>
+        <input id="r_nueva" type="password" minlength="10" autocomplete="new-password">
+      </div>
+      <div id="rInfo" class="ayuda"></div>
+      <div class="pie" style="flex-direction:column; gap:8px">
+        <button class="principal" type="submit" id="rBoton" style="width:100%; justify-content:center">Enviarme un código</button>
+        <button type="button" class="fantasma" style="width:100%; justify-content:center" onclick="verRecuperar(false)">Volver</button>
+      </div>
+      <div class="ayuda">¿Sin Telegram ni WhatsApp? Desde el servidor: <code>docker exec -it puerta-panel python panel.py --recuperar USUARIO</code></div>
+    </form>
+
+    <form id="formConfigurar" class="oculto" onsubmit="configurar(event)">
+      <label for="c_codigo">Código de instalación</label>
+      <input id="c_codigo" required placeholder="XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters">
+      <div class="ayuda">Aparece en el registro del servidor al arrancar por primera vez.</div>
+      <label for="c_cuenta">Nombre de tu casa o cerradura</label>
+      <input id="c_cuenta" value="Mi casa" required>
+      <div class="rejilla">
+        <div><label for="c_nombre">Tu nombre</label><input id="c_nombre" required></div>
+        <div><label for="c_usuario">Usuario</label><input id="c_usuario" required autocapitalize="none" autocomplete="username"></div>
+      </div>
+      <label for="c_password">Contraseña (mín. 10 caracteres)</label>
+      <input id="c_password" type="password" minlength="10" required autocomplete="new-password">
+      <div class="pie"><button class="principal" type="submit" style="width:100%; justify-content:center">Crear administrador</button></div>
+    </form>
+    <div id="accesoError" class="error oculto"></div>
+  </div>
+</div>
+
+<!-- ============ APLICACIÓN ============ -->
+<div id="app" class="oculto">
+  <div class="barra">
+    <div class="barra-in">
+      <div class="marca"><div class="logo"><svg class="i"><use href="#i-candado"/></svg></div>
+        <span>Puerta<span class="muted ocultar-movil" style="font-weight:500" id="marcaCuenta"></span></span></div>
+      <select id="selCuenta" class="cuenta-sel oculto" title="Cuenta" onchange="cambiarCuenta(this.value)"></select>
+      <label class="interruptor ocultar-movil" title="Ensaya sin tocar la cerradura ni enviar nada"><input type="checkbox" id="simular"> Modo prueba</label>
+      <div class="tema ocultar-movil" role="group" aria-label="Tema"></div>
+      <div class="menu">
+        <button class="fantasma usuario-btn" aria-label="Menú de usuario" onclick="abrirMenuUsuario()"><svg class="i"><use href="#i-usuario"/></svg><span id="nombreUsuario" class="ocultar-movil"></span><span id="relojSesion" class="reloj oculto"></span></button>
+        <div id="menuUsuario" class="menu-lista oculto">
+          <div class="quien" id="quienSoy"></div>
+          <div class="menu-movil">
+            <label class="interruptor" style="margin:4px 10px 8px"><input type="checkbox" id="simularMovil" onchange="simular.checked = this.checked"> Modo prueba</label>
+            <div class="tema" role="group" aria-label="Tema" style="margin:0 10px 8px"></div>
+          </div>
+          <div class="menu-sesion">
+            <label for="inactividad">Cerrar sesión tras</label>
+            <select id="inactividad" onchange="cambiarInactividad(this.value)">
+              <option value="5">5 min sin usarla</option><option value="15">15 min sin usarla</option>
+              <option value="30">30 min sin usarla</option><option value="60">1 hora sin usarla</option><option value="240">4 horas sin usarla</option>
+            </select>
+            <div class="muted peq" id="relojMenu"></div>
+          </div>
+          <button onclick="menuUsuario.classList.add('oculto'); dlgPassword.showModal()"><svg class="i"><use href="#i-llave"/></svg>Cambiar contraseña</button>
+          <button onclick="salir()"><svg class="i"><use href="#i-salir"/></svg>Cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+    <nav class="pestanas">
+      <button data-tab="personas" class="activa"><svg class="i"><use href="#i-personas"/></svg>Personas</button>
+      <button data-tab="entradas"><svg class="i"><use href="#i-puerta"/></svg>Entradas</button>
+      <button data-tab="historial"><svg class="i"><use href="#i-lista"/></svg>Historial</button>
+      <button data-tab="camara"><svg class="i"><use href="#i-camara"/></svg>Cámara</button>
+      <button data-tab="ajustes"><svg class="i"><use href="#i-ajustes"/></svg>Ajustes</button>
+    </nav>
+  </div>
+
+  <main>
+    <!-- ===== PERSONAS ===== -->
+    <section id="tab-personas">
+      <div class="resumen">
+        <div class="dato"><div class="n" id="rActivos">–</div><div class="t">Códigos activos</div></div>
+        <div class="dato"><div class="n" id="rInvitados">–</div><div class="t">Invitados ahora</div></div>
+        <div class="dato"><div class="n" id="rProxima" style="font-size:18px; padding-top:6px">–</div><div class="t">Próxima renovación</div></div>
+        <div class="dato" id="rBateria" title="Batería de la cerradura">
+          <div class="pila"><div class="n" id="rBatN">–</div><div class="pila-barra"><i id="rBatBarra" style="width:0"></i></div></div>
+          <div class="t" id="rBatT">Batería</div></div>
+      </div>
+      <div class="card" id="cardPuerta">
+        <div class="puerta-estado">
+          <div class="estado"><svg class="i"><use href="#i-puerta"/></svg><b id="puNombre">Puerta</b>
+            <span class="chip" id="puCerrojo">–</span><span class="chip oculto" id="puSensor">–</span>
+            <button class="icono-btn fantasma" title="Actualizar" aria-label="Actualizar estado" onclick="cargarPuerta(this)"><svg class="i"><use href="#i-renovar"/></svg></button></div>
+          <div class="acciones">
+            <button onclick="accionPuerta('bloquear', this)"><svg class="i"><use href="#i-candado"/></svg>Bloquear</button>
+            <button onclick="accionPuerta('desbloquear', this)"><svg class="i"><use href="#i-llave"/></svg>Desbloquear</button>
+            <button class="principal" onclick="accionPuerta('abrir', this)"><svg class="i"><use href="#i-puerta"/></svg>Abrir puerta</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="cab">
+          <h2>Personas con acceso</h2>
+          <div class="acciones">
+            <button onclick="cargarEstado()" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Actualizar</button>
+            <button onclick="rotarTodos(this)">Renovar semanales ya</button>
+            <button class="principal" onclick="abrirPersona()"><svg class="i"><use href="#i-mas"/></svg>Añadir persona</button>
+          </div>
+        </div>
+        <div id="aviso" class="aviso oculto"></div>
+        <div id="lista"><div class="vacio">Cargando…</div></div>
+      </div>
+      <div class="card" id="otrosCard" hidden>
+        <details>
+          <summary><b>Otros códigos del teclado</b> <span class="muted peq">— no creados por este programa</span></summary>
+          <div class="tabla" style="margin-top:10px"><table><tbody id="otros"></tbody></table></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ===== ENTRADAS ===== -->
+    <section id="tab-entradas" class="oculto">
+      <div class="card">
+        <div class="cab"><h2>Entradas y salidas</h2>
+          <button onclick="cargarRegistro(this)" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Actualizar</button></div>
+        <div class="filtros">
+          <select id="fPersona" onchange="pintarRegistro()"><option value="">Todas las personas</option></select>
+          <select id="fTipo" onchange="pintarRegistro()">
+            <option value="">Todo</option><option value="entradas">Solo entradas con código</option>
+            <option value="invitados">Solo invitados</option><option value="fallos">Códigos incorrectos y fallos</option>
+            <option value="noche">De noche (00:00–07:00)</option>
+            <option value="desactivados">🚨 Intentos con códigos desactivados</option>
+          </select>
+          <select id="fLimite" onchange="cargarRegistro()"><option value="20">Últimos 20</option><option value="50" selected>Últimos 50</option><option value="100">Últimos 100</option><option value="300">Últimos 300</option><option value="1000">Últimos 1000</option></select>
+        </div>
+        <div class="ayuda" style="margin-bottom:10px">El teclado está fuera: «Entrada con código» es alguien entrando; «Apertura desde dentro» suele ser alguien saliendo.</div>
+        <div id="registro" class="tabla"><div class="vacio">Pulsa Actualizar.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== CÁMARA ===== -->
+    <section id="tab-camara" class="oculto">
+      <div class="card">
+        <div class="cab"><h2>En directo</h2><span class="muted peq">Pulsa una cámara para verla en directo · una a la vez</span></div>
+        <div id="camDirecto"><div class="vacio">Cargando…</div></div>
+      </div>
+      <div class="card">
+        <div class="cab"><h2>Avisos de la cámara</h2>
+          <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+            <span class="chip" id="camChip">–</span>
+            <button onclick="probarCamara(this)" id="camProbar"><svg class="i"><use href="#i-camara"/></svg>Probar aviso con clip</button>
+            <button onclick="cargarCamara(this)" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Actualizar</button>
+          </span></div>
+        <div class="ayuda" style="margin-bottom:10px">Fotos y clips de los avisos (movimiento, timbre y avisos de la puerta). Se borran solos a los 30 días.
+          Los avisos de movimiento se activan en Ajustes → Avisos de la puerta.</div>
+        <div id="camEventos" class="eventos-cam"><div class="vacio">Cargando…</div></div>
+      </div>
+    </section>
+
+    <!-- ===== HISTORIAL ===== -->
+    <section id="tab-historial" class="oculto">
+      <div class="card">
+        <div class="cab"><h2>Historial de gestión</h2>
+          <div class="acciones">
+            <button id="btnRevelarHist" onclick="revelarHistorial(this)" class="fantasma"><svg class="i"><use href="#i-ojo"/></svg>Mostrar datos</button>
+            <button onclick="cargarHistorial(this)" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Actualizar</button>
+          </div></div>
+        <div class="filtros">
+          <select id="hTipo" onchange="pintarHistorial()">
+            <option value="">Todo</option><option value="codigo">Códigos</option><option value="invitado">Invitados</option>
+            <option value="whatsapp">WhatsApp</option><option value="acceso">Accesos al panel</option>
+            <option value="docker">Sistema / WAHA</option><option value="error">Solo errores</option>
+          </select>
+          <input id="hBuscar" placeholder="Buscar…" oninput="pintarHistorial()">
+          <label class="interruptor"><input type="checkbox" id="hPruebas" onchange="pintarHistorial()"> Incluir pruebas</label>
+        </div>
+        <div id="historial" class="tabla"><div class="vacio">Cargando…</div></div>
+      </div>
+      <div class="card">
+        <div class="cab"><div><h2>Códigos emitidos</h2>
+          <div class="muted peq">Todos los códigos dados en esta cuenta. Nunca se repiten. Los desactivados se vigilan: si alguien los teclea, aparece en Entradas con 🚨.</div></div>
+          <select id="cFiltro" onchange="pintarCodigos()" style="width:auto"><option value="">Todos</option><option value="activo">Activos</option><option value="vigilado">Desactivados (vigilados)</option><option value="retirado">Retirados</option></select></div>
+        <div id="codigos" class="tabla"><div class="vacio">Cargando…</div></div>
+      </div>
+    </section>
+
+    <!-- ===== AJUSTES ===== -->
+    <section id="tab-ajustes" class="oculto">
+      <nav class="grupos-ajustes" id="gruposAjustes" aria-label="Tipo de ajustes"></nav>
+      <div class="card" data-grupo="casas" id="cardEstaCasa">
+        <div class="cab" style="margin-bottom:0"><h2>Esta casa</h2><span class="muted peq" id="ecNombre"></span></div>
+        <div id="ecResumen" class="peq" style="margin-top:8px"></div>
+      </div>
+      <div class="card" data-grupo="nuki" id="cardSecciones">
+        <div class="cab" style="margin-bottom:6px"><h2>Secciones</h2><span class="muted peq">Agrupan a las personas en la lista (Inquilinos, Familia, Limpieza…)</span></div>
+        <div id="listaSeccionesAjustes"></div>
+        <form class="acciones" style="margin-top:12px" onsubmit="crearSeccion(event)">
+          <input id="nuevaSeccion" maxlength="40" placeholder="Nueva sección" style="flex:1; min-width:180px; width:auto" autocomplete="off">
+          <button class="principal" type="submit"><svg class="i"><use href="#i-mas"/></svg>Crear sección</button>
+        </form>
+      </div>
+      <form id="ajustes" onsubmit="guardarAjustes(event)">
+        <div class="card" data-grupo="nuki" id="cardNuki">
+          <h2>Cerradura Nuki</h2>
+          <label class="interruptor" style="margin-top:12px"><input type="checkbox" id="solo_camara" onchange="$('nukiCampos').classList.toggle('oculto', this.checked)"> Esta casa no tiene cerradura Nuki (solo cámara)</label>
+          <div class="ayuda">Así el panel solo muestra la cámara y sus avisos. Guarda y se recargará.</div>
+          <div class="rejilla" id="nukiCampos">
+            <div>
+              <label for="token">Token de Nuki Web</label>
+              <input id="token" type="password" autocomplete="off">
+              <div class="ayuda">web.nuki.io → API → Generar token. Se guarda cifrado.</div>
+            </div>
+            <div>
+              <label for="smartlock_id">Cerradura</label>
+              <div style="display:flex; gap:6px"><input id="smartlock_id" placeholder="ID de la app (p. ej. 3538C0F4)">
+                <button type="button" onclick="buscarCerraduras(this)">Buscar</button></div>
+              <select id="listaCerraduras" class="oculto" style="margin-top:6px" onchange="smartlock_id.value=this.value"></select>
+            </div>
+          </div>
+        </div>
+        <div class="card" data-grupo="nuki" id="cardRotacion">
+          <h2>Renovación semanal</h2>
+          <label class="interruptor" style="margin-top:12px"><input type="checkbox" id="rot_activa"> Renovar automáticamente los códigos «Semanal»</label>
+          <div class="rejilla3">
+            <div><label for="rot_dia">Día</label><select id="rot_dia">
+              <option value="0">Lunes</option><option value="1">Martes</option><option value="2">Miércoles</option><option value="3">Jueves</option>
+              <option value="4">Viernes</option><option value="5">Sábado</option><option value="6">Domingo</option></select></div>
+            <div><label for="rot_hora">Hora</label><input id="rot_hora" type="number" min="0" max="23"></div>
+            <div><label for="rot_min">Minuto</label><input id="rot_min" type="number" min="0" max="59"></div>
+          </div>
+          <div class="rejilla">
+            <div><label for="dias_validez">Días que dura cada código</label><input id="dias_validez" type="number" min="1" max="60"></div>
+            <div><label for="vigilar">Vigilar códigos desactivados durante (días)</label><input id="vigilar" type="number" min="0" max="365">
+              <div class="ayuda">Los códigos viejos se desactivan en vez de borrarse, para detectar si alguien los usa. 0 = borrarlos al momento. Ocupan hueco en el teclado (máx. 100 códigos).</div></div>
+          </div>
+        </div>
+        <div class="card" data-grupo="nuki" id="cardBateria">
+          <div class="cab" style="margin-bottom:0"><h2>Batería y avisos</h2><span class="muted peq" id="batEstado"></span></div>
+          <label class="interruptor" style="margin-top:12px"><input type="checkbox" id="bat_activo"> Avisarme cuando la batería baje</label>
+          <div class="rejilla">
+            <div><label for="bat_umbral">Avisar al llegar al (%)</label><input id="bat_umbral" type="number" min="5" max="90" step="5">
+              <div class="ayuda">También avisa si las pilas del teclado o del sensor de puerta se agotan. Un solo aviso por bajada; se rearma al cambiar las pilas.</div></div>
+<div></div>
+            <div style="grid-column:1/-1"><label>Avisar por</label>
+              <div class="canales" id="bat_por">
+                <label class="canal"><input type="checkbox" data-c="whatsapp" onchange="mostrarCanalBateria()"><svg class="i"><use href="#i-whatsapp"/></svg>WhatsApp</label>
+                <label class="canal"><input type="checkbox" data-c="telegram" onchange="mostrarCanalBateria()"><svg class="i"><use href="#i-telegram"/></svg>Telegram</label>
+                <label class="canal"><input type="checkbox" data-c="correo" onchange="mostrarCanalBateria()"><svg class="i"><use href="#i-correo"/></svg>Correo</label>
+              </div></div>
+            <div id="batTgBloque" style="grid-column:1/-1"><label>Telegram de destino</label><div class="tg-avisos"></div></div>
+            <div id="batCorreoBloque"><label for="bat_correo">Correo(s) de destino</label><input id="bat_correo" type="email" multiple placeholder="tu@correo.com, pareja@correo.com" autocomplete="email">
+              <div class="ayuda" id="batSmtpAyuda"></div></div>
+            <div id="batTelBloque"><label for="bat_tel">WhatsApp de destino</label>
+              <label class="interruptor" style="margin:2px 0 8px"><input type="checkbox" id="bat_principal" onchange="mostrarCanalBateria()"> Al número principal (el vinculado en la pestaña WhatsApp)</label>
+              <input id="bat_tel" inputmode="tel" placeholder="+34600111222" autocomplete="off">
+              <div class="ayuda" id="batTelAyuda">Se envía desde el WhatsApp del servidor, que tiene que estar vinculado.</div></div>
+          </div>
+          <div class="acciones" style="margin-top:12px">
+            <button type="button" onclick="probarCorreoBateria(this)"><svg class="i"><use href="#i-correo"/></svg>Guardar y enviar aviso de prueba</button>
+            <button type="button" class="fantasma" onclick="cargarBateria(true)"><svg class="i"><use href="#i-renovar"/></svg>Leer batería ahora</button>
+          </div>
+          <div id="batError" class="error oculto"></div>
+        </div>
+        <div class="card" data-grupo="comunicacion" id="cardAvisos">
+          <div class="cab" style="margin-bottom:0"><h2>Avisos de la puerta</h2><span class="muted peq" id="avisosResumen"></span></div>
+          <p class="muted peq" style="margin:8px 0 12px">Te avisa al momento (unos 30 s de retraso) de lo que pasa en la puerta. Cada aviso puede ir siempre o solo en una franja horaria.</p>
+          <div id="reglasAvisos"></div>
+          <h3>¿Dónde te llegan?</h3>
+          <div class="rejilla">
+<div style="grid-column:1/-1"><label>Avisar por</label>
+              <div class="canales" id="al_por">
+                <label class="canal"><input type="checkbox" data-c="whatsapp" onchange="mostrarCanalAvisos()"><svg class="i"><use href="#i-whatsapp"/></svg>WhatsApp</label>
+                <label class="canal"><input type="checkbox" data-c="telegram" onchange="mostrarCanalAvisos()"><svg class="i"><use href="#i-telegram"/></svg>Telegram</label>
+                <label class="canal"><input type="checkbox" data-c="correo" onchange="mostrarCanalAvisos()"><svg class="i"><use href="#i-correo"/></svg>Correo</label>
+              </div></div>
+            <div id="alTgBloque" style="grid-column:1/-1"><label>Telegram de destino</label><div class="tg-avisos"></div></div>
+            <div id="alTelBloque"><label for="al_tel">WhatsApp de destino</label>
+              <label class="interruptor" style="margin:2px 0 8px"><input type="checkbox" id="al_principal" onchange="mostrarCanalAvisos()"> Al número principal (el vinculado en la pestaña WhatsApp)</label>
+              <input id="al_tel" inputmode="tel" placeholder="+34600111222" autocomplete="off"></div>
+            <div id="alCorreoBloque"><label for="al_correo">Correo(s)</label><input id="al_correo" type="email" multiple placeholder="tu@correo.com" autocomplete="email"></div>
+          </div>
+          <div class="acciones" style="margin-top:12px">
+            <button type="button" onclick="probarAvisoPuerta(this)"><svg class="i"><use href="#i-whatsapp"/></svg>Guardar y enviar aviso de prueba</button>
+          </div>
+        </div>
+        <div class="card" data-grupo="comunicacion" id="cardMensajes">
+          <h2>WhatsApp</h2>
+          <label for="proveedor">Forma de envío</label>
+          <select id="proveedor" onchange="mostrarProveedor()">
+            <option value="waha">WAHA: automático, desde el número vinculado por el administrador</option>
+            <option value="enlace">Enlace: lo envías tú desde tu WhatsApp con un clic</option>
+            <option value="callmebot">CallMeBot: gratis, cada persona activa su clave</option>
+            <option value="twilio">Twilio: de pago</option>
+          </select>
+          <div id="twilioCampos" class="rejilla oculto">
+            <div><label for="twilio_sid">Twilio Account SID</label><input id="twilio_sid" autocomplete="off"></div>
+            <div><label for="twilio_token">Twilio Auth Token</label><input id="twilio_token" type="password" autocomplete="off"></div>
+            <div><label for="twilio_numero">Número de WhatsApp de Twilio</label><input id="twilio_numero" placeholder="+14155238886"></div>
+          </div>
+          <label for="mensaje">Mensaje del código semanal / temporal</label>
+          <textarea id="mensaje"></textarea>
+          <div class="ayuda">Variables: {nombre}, {codigo}, {hasta}, {dias}.</div>
+          <label for="mensaje_fijo">Mensaje del código fijo</label>
+          <textarea id="mensaje_fijo"></textarea>
+          <div class="ayuda">Variables: {nombre}, {codigo}.</div>
+          <label for="mensaje_invitado">Mensaje del código de invitado</label>
+          <textarea id="mensaje_invitado"></textarea>
+          <div class="ayuda">Variables: {nombre} (quien lo pide), {codigo}, {hasta}, {motivo}.</div>
+        </div>
+      </form>
+      <form class="card solo-admin" data-grupo="comunicacion" id="formSmtp" onsubmit="guardarSmtp(event)">
+        <div class="cab" style="margin-bottom:0"><h2>Servidor de correo (SMTP)</h2><span class="chip">Solo administrador · común a todas las cuentas</span></div>
+        <p class="muted peq" style="margin:6px 0 0">Con Gmail: servidor <b>smtp.gmail.com</b>, puerto <b>587</b>, STARTTLS, tu correo como usuario y una
+          <b>contraseña de aplicación</b> (myaccount.google.com → Seguridad → Contraseñas de aplicaciones), no tu contraseña normal.</p>
+        <div class="rejilla3">
+          <div><label for="smtp_servidor">Servidor</label><input id="smtp_servidor" placeholder="smtp.gmail.com" autocomplete="off"></div>
+          <div><label for="smtp_puerto">Puerto</label><input id="smtp_puerto" type="number" min="1" max="65535"></div>
+          <div><label for="smtp_seguridad">Seguridad</label><select id="smtp_seguridad">
+            <option value="starttls">STARTTLS (587)</option><option value="ssl">SSL/TLS (465)</option><option value="ninguna">Ninguna</option></select></div>
+        </div>
+        <div class="rejilla">
+          <div><label for="smtp_usuario">Usuario</label><input id="smtp_usuario" autocomplete="off" autocapitalize="none"></div>
+          <div><label for="smtp_password">Contraseña</label><input id="smtp_password" type="password" autocomplete="new-password"></div>
+          <div><label for="smtp_remitente">Remitente (opcional)</label><input id="smtp_remitente" placeholder="Puerta &lt;tu@gmail.com&gt;" autocomplete="off"></div>
+          <div><label for="smtp_prueba">Enviar prueba a</label><input id="smtp_prueba" type="email" placeholder="tu@correo.com"></div>
+        </div>
+        <div class="pie">
+          <button type="button" onclick="probarSmtp(this)"><svg class="i"><use href="#i-correo"/></svg>Guardar y probar</button>
+          <button class="principal" type="submit">Guardar servidor</button>
+        </div>
+      </form>
+      <form class="card solo-admin" data-grupo="comunicacion" id="formTelegram" onsubmit="guardarTelegram(event)">
+        <div class="cab" style="margin-bottom:0"><h2>Telegram (bot)</h2><span class="chip" id="tgBotChip">Sin configurar</span></div>
+        <p class="muted peq" style="margin:6px 0 0">Un bot común para todas las cuentas. Créalo en Telegram con <b>@BotFather</b> → <code>/newbot</code> y pega aquí el token que te da.
+          Cada persona se conecta una vez pulsando un enlace; el bot no puede escribir a nadie que no lo haya hecho.</p>
+        <label for="tg_token">Token del bot</label>
+        <input id="tg_token" type="password" autocomplete="off" placeholder="123456789:AA…">
+        <div class="ayuda">Se comprueba con Telegram antes de guardarlo y va cifrado a la bóveda.</div>
+        <div class="pie">
+          <button type="button" class="peligro" id="tgQuitar" onclick="quitarTelegram(this)">Quitar bot</button>
+          <button class="principal" type="submit">Guardar token</button>
+        </div>
+      </form>
+      <div class="card solo-admin" data-grupo="camaras" id="cardEufy">
+        <div class="cab" style="margin-bottom:0"><h2>Cámara Eufy</h2><span class="chip" id="eufyChip">Sin configurar</span></div>
+        <p class="muted peq" style="margin:6px 0 0">Usa una <b>cuenta secundaria</b> de Eufy con la cámara compartida (si usas la principal, la app del móvil se desconectaría).
+          La contraseña va cifrada a la bóveda.</p>
+        <form id="formEufy" onsubmit="guardarEufy(event)">
+          <div class="rejilla">
+            <div><label for="eufy_usuario">Correo de la cuenta secundaria</label><input id="eufy_usuario" type="email" autocomplete="off" autocapitalize="none"></div>
+            <div><label for="eufy_password">Contraseña</label><input id="eufy_password" type="password" autocomplete="new-password"></div>
+          </div>
+          <div class="pie">
+            <button type="button" class="peligro oculto" id="eufyQuitar" onclick="quitarEufy(this)">Desconectar</button>
+            <button class="principal" type="submit">Guardar y conectar</button>
+          </div>
+        </form>
+        <div id="eufyCaptcha" class="oculto">
+          <p class="peq"><b>Eufy pide comprobar que eres una persona.</b> Escribe los caracteres de la imagen:</p>
+          <img id="eufyCaptchaImg" class="captcha-img" alt="Captcha de Eufy">
+          <div class="enlace-copia"><input id="eufyCaptchaTxt" autocomplete="off" autocapitalize="none"><button type="button" class="principal" onclick="enviarEufy(this, 'captcha', 'eufyCaptchaTxt')">Enviar</button></div>
+        </div>
+        <div id="eufyCodigo" class="oculto">
+          <p class="peq"><b>Eufy ha enviado un código de verificación</b> al correo de la cuenta secundaria. Escríbelo aquí:</p>
+          <div class="enlace-copia"><input id="eufyCodigoTxt" inputmode="numeric" autocomplete="one-time-code"><button type="button" class="principal" onclick="enviarEufy(this, 'codigo', 'eufyCodigoTxt')">Enviar</button></div>
+        </div>
+        <div id="eufyError" class="ayuda oculto" style="color:var(--danger)"></div>
+        <div id="eufyDisp"></div>
+      </div>
+
+      <div class="card solo-admin" data-grupo="comunicacion" id="cardWaha">
+        <div class="cab"><h2>WhatsApp del servidor (WAHA)</h2>
+          <button onclick="cargarDocker(this)" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Comprobar</button></div>
+        <p class="muted peq" style="margin-top:-6px">Lo comparten todas las cuentas que elijan «WAHA» en Ajustes: los mensajes salen del número vinculado aquí.</p>
+        <div id="pasos"></div>
+      </div>
+      <div class="card solo-admin" data-grupo="comunicacion" id="qrCard" hidden>
+        <h2>Vincular WhatsApp</h2>
+        <p class="muted peq">En el móvil: WhatsApp → Ajustes → Dispositivos vinculados → Vincular un dispositivo.</p>
+        <img id="qrImg" alt="Código QR de WhatsApp" style="width:260px; max-width:100%; background:#fff; padding:8px; border-radius:10px">
+      </div>
+      <div class="card solo-admin" data-grupo="comunicacion" id="cardWahaHerr">
+        <h2>WhatsApp: herramientas</h2>
+        <div class="acciones" style="margin-top:12px">
+          <button onclick="docker('arrancar', this)">▶︎ Arrancar</button>
+          <button onclick="docker('parar', this, '¿Parar WAHA? No se enviarán WhatsApp hasta que lo arranques.')">■ Parar</button>
+          <button onclick="docker('reiniciar', this)">↻ Reiniciar</button>
+          <button onclick="docker('iniciar-sesion', this)">Iniciar sesión</button>
+          <button class="peligro" onclick="docker('cerrar-sesion', this, '¿Desvincular WhatsApp? Habrá que volver a escanear el QR.')">Desvincular WhatsApp</button>
+          <button onclick="verLogs(this)" class="fantasma">Ver registro técnico</button>
+        </div>
+        <pre id="logs" class="oculto"></pre>
+      </div>
+    
+      <div class="card solo-admin" data-grupo="casas" id="cardCasas">
+        <div class="cab"><h2>Casas y usuarios</h2>
+          <div class="acciones">
+            <button onclick="abrirNuevaCasa()"><svg class="i"><use href="#i-mas"/></svg>Nueva casa</button>
+            <button class="principal" onclick="abrirUsuarioPanel()"><svg class="i"><use href="#i-mas"/></svg>Nuevo usuario</button>
+          </div></div>
+        <p class="muted peq" style="margin-top:-6px">Cada casa tiene sus personas, cámaras, avisos, historial y claves (cifradas en la bóveda). Los usuarios «gestor» solo ven su casa; los «admin», todas.</p>
+        <div id="listaCuentas"></div>
+      </div>
+        </section>
+  </main>
+</div>
+
+<!-- ============ DIÁLOGOS ============ -->
+<dialog id="dlgPersona">
+  <form onsubmit="guardarPersona(event)">
+    <h2 id="pTitulo">Añadir persona</h2>
+    <input type="hidden" id="p_id">
+    <label for="p_nombre">Nombre</label><input id="p_nombre" required maxlength="60">
+    <label for="p_tel">Teléfono (con prefijo)</label><input id="p_tel" placeholder="+34600111222" inputmode="tel">
+    <div class="ayuda" id="p_telAyuda"></div>
+    <label for="p_tipo">Tipo de código</label>
+    <select id="p_tipo">
+      <option value="semanal">Semanal: se renueva solo cada semana</option>
+      <option value="manual">Temporal: dura los días de Ajustes; lo renuevas tú</option>
+      <option value="fijo">Fijo: no caduca (tú, limpieza, familia…)</option>
+    </select>
+    <label for="p_canal">Enviar los códigos por</label>
+    <select id="p_canal">
+      <option value="whatsapp">WhatsApp</option><option value="telegram">Telegram</option><option value="ambos">WhatsApp y Telegram</option>
+    </select>
+    <div class="ayuda" id="p_canalAyuda"></div>
+    <label for="p_seccion">Sección</label>
+    <select id="p_seccion"></select>
+    <div class="ayuda">Las secciones se crean y se editan en <a href="#" onclick="dlgPersona.close(); irA('ajustes'); verGrupo('nuki'); abrirTarjeta('cardSecciones', true); return false">Ajustes → Secciones</a>.</div>
+    <div id="p_apikeyBloque"><label for="p_apikey">Clave de CallMeBot de esta persona</label><input id="p_apikey" autocomplete="off"></div>
+    <div class="pie"><button type="button" onclick="dlgPersona.close()">Cancelar</button><button class="principal" type="submit">Guardar</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgInvitado">
+  <form onsubmit="crearInvitado(event)">
+    <h2 id="invTitulo">Código de invitado</h2>
+    <p class="muted peq" style="margin:0">Caduca solo y puedes anularlo cuando quieras.</p>
+    <input type="hidden" id="i_para">
+    <label for="i_horas">Duración</label>
+    <select id="i_horas"><option value="2">2 horas</option><option value="4">4 horas</option><option value="12">12 horas</option>
+      <option value="24" selected>1 día</option><option value="48">2 días</option><option value="72">3 días</option><option value="168">1 semana</option></select>
+    <label for="i_motivo">Motivo (queda en el historial)</label><input id="i_motivo" placeholder="Visita, técnico, cuidador…">
+    <label for="i_dest">Enviar el código a</label>
+    <select id="i_dest" onchange="i_tel.classList.toggle('oculto', this.value!=='invitado')">
+      <option value="inquilino">La persona que lo pide</option><option value="invitado">Directamente al invitado</option></select>
+    <input id="i_tel" class="oculto" style="margin-top:6px" placeholder="+34600111222" inputmode="tel">
+    <div class="pie"><button type="button" onclick="dlgInvitado.close()">Cancelar</button><button class="principal" type="submit">Crear y enviar</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgResultado">
+  <h2 id="resTitulo">Código nuevo</h2>
+  <div id="resCuerpo"></div>
+  <div class="pie"><button class="principal" onclick="dlgResultado.close(); cargarEstado()">Cerrar</button></div>
+</dialog>
+
+<dialog id="dlgPassword">
+  <form onsubmit="cambiarPassword(event)">
+    <h2>Cambiar contraseña</h2>
+    <label for="pw_actual">Contraseña actual</label><input id="pw_actual" type="password" required autocomplete="current-password">
+    <label for="pw_nueva">Nueva contraseña (mín. 10 caracteres)</label><input id="pw_nueva" type="password" minlength="10" required autocomplete="new-password">
+    <div class="pie"><button type="button" onclick="dlgPassword.close()">Cancelar</button><button class="principal" type="submit">Cambiar</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgCuenta" style="max-width:560px">
+  <form onsubmit="pasoCasa(event)">
+    <div class="muted peq" id="ncPasoTxt">Paso 1 de 4</div>
+    <h2 id="ncTitulo" style="margin-top:2px">Nueva casa</h2>
+    <div data-paso="1">
+      <p class="muted peq" style="margin:0">Cada casa tiene sus personas, sus avisos y sus cámaras (p. ej. «Casa de mis padres»).</p>
+      <label for="nc_nombre">Nombre de la casa</label><input id="nc_nombre" maxlength="60" autocomplete="off">
+    </div>
+    <div data-paso="2" class="oculto">
+      <p class="muted peq" style="margin:0 0 10px">¿Esta casa tiene una cerradura Nuki?</p>
+      <div class="canales" style="gap:10px">
+        <label class="canal" style="flex:1"><input type="radio" name="nc_nuki" value="si" onchange="ncNuki()"> 🔐 Sí, con Nuki</label>
+        <label class="canal" style="flex:1"><input type="radio" name="nc_nuki" value="no" onchange="ncNuki()"> 📷 No, solo cámara</label>
+      </div>
+      <div id="ncQuitarNuki" class="ayuda oculto" style="color:var(--warn)">⚠️ Se quitará la cerradura de esta casa en el panel (token incluido). Los códigos que ya están en la cerradura seguirán funcionando: bórralos antes en Personas si hace falta.</div>
+      <div id="ncNukiCampos" class="oculto">
+        <label for="nc_token">Token de Nuki Web</label>
+        <input id="nc_token" type="password" autocomplete="off" placeholder="web.nuki.io → API → Generar token">
+        <div class="enlace-copia"><select id="nc_lock" style="flex:1"><option value="">Pulsa «Buscar» para ver tus cerraduras</option></select>
+          <button type="button" onclick="ncBuscar(this)">Buscar</button></div>
+        <div class="ayuda">El token se guarda cifrado en la bóveda.</div>
+      </div>
+    </div>
+    <div data-paso="3" class="oculto">
+      <p class="muted peq" style="margin:0 0 6px">Marca las cámaras que están en esta casa. ⭐ es la que pone foto y clip en los avisos; 📷 las que avisan de movimiento.</p>
+      <div id="ncCamaras"></div>
+    </div>
+    <div data-paso="4" class="oculto">
+      <div id="ncResumen" class="peq"></div>
+      <div class="ayuda" style="margin-top:10px">Después podrás crear un usuario para quien la gestione (pestaña Cuentas → Nuevo usuario) y ajustar los avisos.</div>
+    </div>
+    <div class="pie">
+      <button type="button" onclick="dlgCuenta.close()">Cancelar</button>
+      <button type="button" class="oculto" id="ncAtras" onclick="pasoCasa(null, -1)">Atrás</button>
+      <button class="principal" type="submit" id="ncSiguiente">Siguiente</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgUsuarioPanel">
+  <form onsubmit="guardarUsuarioPanel(event)">
+    <h2 id="upTitulo">Nuevo usuario</h2>
+    <input type="hidden" id="up_editar">
+    <div class="rejilla">
+      <div><label for="up_nombre">Nombre</label><input id="up_nombre" required></div>
+      <div><label for="up_usuario">Usuario</label><input id="up_usuario" required autocapitalize="none" autocomplete="off"></div>
+    </div>
+    <div class="rejilla">
+      <div><label for="up_cuenta">Cuenta</label><select id="up_cuenta"></select></div>
+      <div><label for="up_rol">Permisos</label><select id="up_rol"><option value="gestor">Gestor (solo su cuenta)</option><option value="admin">Administrador (todo)</option></select></div>
+    </div>
+    <div id="up_passBloque"><label for="up_password">Contraseña inicial (mín. 10)</label>
+      <div style="display:flex; gap:6px"><input id="up_password" type="text" minlength="10" autocomplete="off"><button type="button" onclick="up_password.value=generarPassword()">Generar</button></div>
+      <div class="ayuda">Pásasela por un canal seguro y pídele que la cambie al entrar.</div></div>
+    <div class="pie"><button type="button" onclick="dlgUsuarioPanel.close()">Cancelar</button><button class="principal" type="submit">Guardar</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgTelegram">
+  <h2 id="tgTitulo">Conectar Telegram</h2>
+  <p class="muted peq" id="tgTexto"></p>
+  <div class="enlace-copia"><input id="tgEnlace" readonly onclick="this.select()">
+    <button type="button" class="icono-btn" title="Copiar" aria-label="Copiar" onclick="copiarEnlaceTg()"><svg class="i"><use href="#i-copiar"/></svg></button></div>
+  <div class="ayuda">El enlace sirve una sola vez y caduca en 7 días.</div>
+  <div class="pie">
+    <button type="button" class="peligro oculto" id="tgDesvincular" onclick="desvincularTg(this)">Desvincular</button>
+    <a class="boton oculto" id="tgPorWhatsapp" target="_blank" rel="noopener"><svg class="i"><use href="#i-whatsapp"/></svg>Mandárselo por WhatsApp</a>
+    <a class="boton principal" id="tgAbrir" target="_blank" rel="noopener"><svg class="i"><use href="#i-telegram"/></svg>Abrir en Telegram</a>
+    <button type="button" onclick="dlgTelegram.close(); cargarEstado(); cargarAjustes()">Cerrar</button>
+  </div>
+</dialog>
+<dialog id="dlgEvento">
+  <h2 id="evTitulo">Evento</h2>
+  <p class="muted peq" id="evTexto" style="margin:4px 0 0"></p>
+  <div class="ev-ver" id="evMedia"></div>
+  <div class="pie"><button type="button" onclick="cerrarEvento()">Cerrar</button></div>
+</dialog>
+<dialog id="dlgInactividad">
+  <h2>¿Sigues ahí?</h2>
+  <p class="muted" style="margin:6px 0 0">Por seguridad, la sesión se cerrará en <b id="inacSeg">60</b> segundos.</p>
+  <div class="pie"><button type="button" onclick="salir()">Cerrar sesión</button><button type="button" class="principal" onclick="hayActividad(true)">Seguir conectado</button></div>
+</dialog>
+<dialog id="dlgConfirmar">
+  <form method="dialog">
+    <h2 id="cfTitulo">¿Seguro?</h2>
+    <p id="cfTexto" class="muted" style="margin:6px 0 0"></p>
+    <div id="cfCampoBloque" class="oculto"><input id="cfCampo" autocomplete="off" style="margin-top:12px"></div>
+    <div class="pie"><button value="no" type="submit">Cancelar</button><button id="cfSi" value="si" type="submit" class="principal">Aceptar</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script>
+let YO = null, CONFIG = null, USUARIOS = [], REGISTRO = [], HISTORIAL = [], ADMIN = null, qrTimer = null, histRevelado = false;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const simulando = () => $("simular").checked;
+const ico = (n) => `<svg class="i"><use href="#i-${n}"/></svg>`;
+// ---------- tema día / noche / automático
+const TEMAS = [["claro", "sol", "Modo día"], ["auto", "auto", "Automático (como el sistema)"], ["oscuro", "luna", "Modo noche"]];
+function temaActual() { return document.documentElement.dataset.tema || "auto"; }
+function ponerTema(t) {
+  if (t === "auto") delete document.documentElement.dataset.tema; else document.documentElement.dataset.tema = t;
+  try { t === "auto" ? localStorage.removeItem("tema") : localStorage.setItem("tema", t); } catch (e) {}
+  pintarTema();
+}
+function pintarTema() {
+  document.querySelectorAll(".tema").forEach(g => {
+    g.innerHTML = TEMAS.map(([t, i, txt]) => `<button type="button" class="${temaActual() === t ? "activo" : ""}" title="${txt}" aria-label="${txt}" aria-pressed="${temaActual() === t}" onclick="ponerTema('${t}')">${ico(i)}</button>`).join("");
+  });
+}
+const DIAS = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+
+// Confirmaciones propias: las ventanas nativas del navegador no funcionan en todas partes
+function confirmar(texto, {titulo = "¿Seguro?", boton = "Aceptar", peligro = false, campo = null, valor = ""} = {}) {
+  return new Promise(res => {
+    const d = $("dlgConfirmar");
+    $("cfTitulo").textContent = titulo; $("cfTexto").textContent = texto;
+    $("cfSi").textContent = boton; $("cfSi").classList.toggle("peligro", peligro);
+    $("cfCampoBloque").classList.toggle("oculto", campo === null);
+    $("cfCampo").value = valor; $("cfCampo").placeholder = campo || "";
+    d.returnValue = "";
+    d.onclose = () => res(d.returnValue === "si" ? (campo === null ? true : $("cfCampo").value) : (campo === null ? false : null));
+    d.showModal();
+    if (campo !== null) setTimeout(() => $("cfCampo").select(), 30);
+  });
+}
+function aviso(t) { const e = $("toast"); e.textContent = t; e.classList.add("ver"); clearTimeout(e._h); e._h = setTimeout(() => e.classList.remove("ver"), 4000); }
+
+async function api(metodo, ruta, cuerpo) {
+  const r = await fetch(ruta, { method: metodo, credentials: "same-origin",
+    headers: {"Content-Type": "application/json", "X-CSRF": YO?.csrf || ""},
+    body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  let datos = {}; try { datos = await r.json(); } catch (e) {}
+  if (r.status === 401 && !ruta.startsWith("/api/entrar")) { mostrarAcceso(false); throw new Error(datos.error || "Sesión caducada"); }
+  if (!r.ok || datos.ok === false) throw new Error(datos.error || "Error desconocido");
+  return datos;
+}
+async function conBoton(b, fn) { if (b) b.disabled = true; try { return await fn(); } catch (e) { aviso("⚠️ " + e.message); } finally { if (b) b.disabled = false; } }
+function fecha(iso, anio) { if (!iso) return ""; const o = {weekday:"short", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}; if (anio) o.year = "numeric"; return new Date(iso).toLocaleString("es-ES", o); }
+function color(texto) { let h = 0; for (const c of texto) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 45%)`; }
+function iniciales(n) { return n.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(""); }
+function generarPassword() { const a = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const v = crypto.getRandomValues(new Uint32Array(14)); return [...v].map(x => a[x % a.length]).join(""); }
+
+// ================= acceso
+async function inicio() {
+  try {
+    const r = await (await fetch("/api/yo", {credentials: "same-origin"})).json();
+    YO = r.resultado;
+    if (YO.configurar) return mostrarAcceso(true);
+    if (!YO.autenticado) return mostrarAcceso(false);
+    await arrancarApp();
+  } catch (e) { mostrarAcceso(false); }
+}
+function mostrarAcceso(configurar) {
+  clearInterval(qrTimer);
+  $("app").classList.add("oculto"); $("pantallaAcceso").classList.remove("oculto");
+  $("formEntrar").classList.toggle("oculto", configurar); $("formConfigurar").classList.toggle("oculto", !configurar);
+  $("accesoTitulo").textContent = configurar ? "Primer arranque" : "Entrar";
+  $("accesoTexto").textContent = configurar ? "Crea la cuenta de administrador." : "Gestión de códigos de la puerta.";
+  $("accesoError").classList.add("oculto");
+  setTimeout(() => (configurar ? $("c_codigo") : $("e_usuario")).focus(), 50);
+}
+function errorAcceso(m) { $("accesoError").textContent = m; $("accesoError").classList.remove("oculto"); }
+async function entrar(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    try { await api("POST", "/api/entrar", {usuario: $("e_usuario").value, password: $("e_password").value}); }
+    catch (e) { return errorAcceso(e.message); }
+    try { localStorage.setItem("ultimaActividad", String(Date.now())); } catch (e) {}
+    $("e_password").value = ""; $("accesoError").classList.add("oculto"); inicio();
+  });
+}
+function verRecuperar(si) {
+  $("formEntrar").classList.toggle("oculto", si); $("formRecuperar").classList.toggle("oculto", !si);
+  $("accesoTitulo").textContent = si ? "Recuperar el acceso" : "Entrar";
+  $("accesoError").classList.add("oculto");
+  if (si) { $("r_usuario").value = $("e_usuario").value; $("rPaso2").classList.add("oculto"); $("rInfo").textContent = ""; $("rBoton").textContent = "Enviarme un código"; }
+}
+async function recuperar(ev) {
+  ev.preventDefault();
+  const paso2 = !$("rPaso2").classList.contains("oculto");
+  await conBoton(ev.submitter, async () => {
+    try {
+      if (!paso2) {
+        const r = await api("POST", "/api/recuperar", {usuario: $("r_usuario").value});
+        $("rInfo").textContent = r.resultado; $("rPaso2").classList.remove("oculto");
+        $("r_codigo").required = $("r_nueva").required = true; $("rBoton").textContent = "Cambiar contraseña"; $("r_codigo").focus();
+      } else {
+        await api("POST", "/api/recuperar/confirmar", {usuario: $("r_usuario").value, codigo: $("r_codigo").value, nueva: $("r_nueva").value});
+        $("e_usuario").value = $("r_usuario").value; $("r_codigo").value = $("r_nueva").value = "";
+        $("r_codigo").required = $("r_nueva").required = false;
+        verRecuperar(false); aviso("Contraseña cambiada. Ya puedes entrar."); $("e_password").focus();
+      }
+    } catch (e) { errorAcceso(e.message); }
+  });
+}
+async function configurar(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    try { await api("POST", "/api/configurar", {codigo: $("c_codigo").value, nombre_cuenta: $("c_cuenta").value,
+      nombre: $("c_nombre").value, usuario: $("c_usuario").value, password: $("c_password").value}); }
+    catch (e) { return errorAcceso(e.message); }
+    inicio();
+  });
+}
+async function salir(motivo) {
+  try { await api("POST", "/api/salir", {}); } catch (e) {}
+  YO = null; clearInterval(INAC.timer); try { dlgInactividad.close(); } catch (e) {}
+  $("relojSesion").classList.add("oculto"); menuUsuario.classList.add("oculto");
+  mostrarAcceso(false);
+  if (motivo) errorAcceso(motivo);
+}
+function abrirMenuUsuario() {
+  $("simularMovil").checked = $("simular").checked;
+  $("inactividad").value = String(YO?.inactividad_min || 15);
+  menuUsuario.classList.toggle("oculto");
+}
+// ---------- cierre de sesión por inactividad
+const INAC = {timer: null};
+function ultimaActividad() { try { return +localStorage.getItem("ultimaActividad") || Date.now(); } catch (e) { return INAC.ultima || Date.now(); } }
+function hayActividad(forzar) {
+  if (!YO?.autenticado) return;
+  if (!forzar && $("dlgInactividad").open) return;  // con el aviso abierto hay que pulsar «Seguir conectado»
+  const ahora = Date.now();
+  if (!forzar && ahora - (INAC.ultima || 0) < 2000) return;
+  INAC.ultima = ahora; try { localStorage.setItem("ultimaActividad", String(ahora)); } catch (e) {}
+  if ($("dlgInactividad").open) { dlgInactividad.close(); fetch("/api/yo", {credentials: "same-origin"}); }  // renueva la sesión en el servidor
+  revisarInactividad();
+}
+function fmtTiempo(seg) { const m = Math.floor(seg / 60), s = seg % 60; return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m}:${String(s).padStart(2, "0")}`; }
+function revisarInactividad() {
+  if (!YO?.autenticado) return;
+  const limite = (YO.inactividad_min || 15) * 60;
+  const quedan = Math.max(0, Math.round(limite - (Date.now() - ultimaActividad()) / 1000));
+  $("relojMenu").textContent = `Se cerrará en ${fmtTiempo(quedan)} si no la usas.`;
+  const reloj = $("relojSesion");
+  reloj.textContent = "⏱ " + fmtTiempo(quedan);
+  reloj.classList.toggle("oculto", quedan > 120);
+  if (quedan <= 0) return salir("Sesión cerrada por inactividad. Vuelve a entrar.");
+  if (quedan <= 60) { $("inacSeg").textContent = quedan; if (!$("dlgInactividad").open) dlgInactividad.showModal(); }
+}
+function arrancarInactividad() {
+  clearInterval(INAC.timer);
+  hayActividad(true);
+  INAC.timer = setInterval(revisarInactividad, 1000);
+}
+["pointerdown", "keydown", "touchstart", "wheel"].forEach(ev => document.addEventListener(ev, () => hayActividad(), {passive: true, capture: true}));
+document.addEventListener("scroll", () => hayActividad(), {passive: true, capture: true});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) revisarInactividad(); });
+window.addEventListener("storage", e => { if (e.key === "ultimaActividad") revisarInactividad(); });
+async function cambiarInactividad(v) {
+  await conBoton(null, async () => {
+    const r = (await api("POST", "/api/preferencias", {inactividad_min: +v})).resultado;
+    YO.inactividad_min = r.inactividad_min; hayActividad(true);
+    aviso(`La sesión se cerrará tras ${$("inactividad").selectedOptions[0].textContent}`);
+  });
+}
+async function cambiarPassword(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    await api("POST", "/api/cambiar-password", {actual: $("pw_actual").value, nueva: $("pw_nueva").value});
+    $("pw_actual").value = $("pw_nueva").value = ""; dlgPassword.close(); aviso("Contraseña cambiada");
+  });
+}
+
+async function arrancarApp() {
+  $("pantallaAcceso").classList.add("oculto"); $("app").classList.remove("oculto");
+  // al volver tras mucho rato con la página cerrada: si ya pasó el tiempo, fuera
+  try { const u = +localStorage.getItem("ultimaActividad"); if (u && Date.now() - u > (YO.inactividad_min || 15) * 60000) { localStorage.removeItem("ultimaActividad"); return salir("Sesión cerrada por inactividad. Vuelve a entrar."); } } catch (e) {}
+  arrancarInactividad();
+  const admin = YO.rol === "admin";
+  document.querySelectorAll(".solo-admin").forEach(e => e.classList.toggle("oculto", !admin));
+  $("nombreUsuario").textContent = YO.nombre;
+  $("quienSoy").innerHTML = `<b>${esc(YO.nombre)}</b><br>${esc(YO.usuario)} · ${admin ? "Administrador" : "Gestor"}`;
+  $("marcaCuenta").textContent = " · " + YO.nombre_cuenta;
+  const sel = $("selCuenta");
+  sel.classList.toggle("oculto", !admin || YO.cuentas.length < 2);
+  sel.innerHTML = YO.cuentas.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join("");
+  sel.value = YO.cuenta;
+  REGISTRO = []; HISTORIAL = [];
+  await cargarAjustes(); cargarEstado();
+  let tab = null; try { tab = localStorage.getItem("pestana"); } catch (e) {}
+  if (CONFIG.solo_camara) { if (["personas", "entradas"].includes(tab) || !tab) tab = "camara"; }
+  else if (!CONFIG.nuki.token_puesto || !CONFIG.nuki.smartlock_id) tab = "ajustes";
+  if (tab === "whatsapp" || tab === "cuentas") tab = "ajustes";
+  irA(tab || "personas");
+  cargarCamara(null, true); if (!CONFIG.solo_camara) cargarPuerta();
+  abrirEventoDelEnlace();
+}
+window.addEventListener("hashchange", abrirEventoDelEnlace);
+async function cambiarCuenta(id) {
+  await conBoton(null, async () => {
+    await api("POST", "/api/cambiar-cuenta", {cuenta: id});
+    const r = await (await fetch("/api/yo", {credentials: "same-origin"})).json(); YO = r.resultado; arrancarApp();
+  });
+}
+
+// ================= pestañas
+document.querySelectorAll("nav.pestanas button").forEach(b => b.onclick = () => irA(b.dataset.tab));
+function irA(tab) {
+  document.querySelectorAll("nav.pestanas button").forEach(b => b.classList.toggle("activa", b.dataset.tab === tab));
+  if (tab === "whatsapp" || tab === "cuentas") { const g = tab === "whatsapp" ? "comunicacion" : "casas"; tab = "ajustes"; GRUPO_AJ = g; }
+  document.querySelectorAll("nav.pestanas button").forEach(b => b.classList.toggle("activa", b.dataset.tab === tab));
+  ["personas","entradas","historial","camara","ajustes"].forEach(t => $("tab-" + t).classList.toggle("oculto", t !== tab));
+  try { localStorage.setItem("pestana", tab); } catch (e) {}
+  clearInterval(qrTimer);
+  if (tab !== "camara" && typeof pararDirecto === "function") pararDirecto();
+  if (tab === "entradas" && !REGISTRO.length) cargarRegistro();
+  if (tab === "historial") cargarHistorial();
+  if (tab === "camara") cargarCamara();
+  if (tab === "ajustes") verGrupo(GRUPO_AJ);
+}
+document.addEventListener("click", e => { if (!e.target.closest(".menu")) $("menuUsuario").classList.add("oculto"); });
+
+// ================= personas
+async function cargarEstado() {
+  try {
+    const e = (await api("GET", "/api/estado")).resultado;
+    USUARIOS = e.usuarios;
+    $("aviso").textContent = e.aviso || ""; $("aviso").classList.toggle("oculto", !e.aviso);
+    pintarPersonas(); pintarOtros(e.otros); rellenarFiltroPersonas(); pintarResumen(); pintarSecciones();
+    cargarBateria();
+  } catch (err) { aviso("⚠️ " + err.message); }
+}
+function pintarResumen() {
+  $("rActivos").textContent = USUARIOS.filter(u => u.activo).length;
+  $("rInvitados").textContent = USUARIOS.reduce((n, u) => n + u.invitados.length, 0);
+  const r = CONFIG?.rotacion;
+  if (!r || !r.activa) { $("rProxima").textContent = "Desactivada"; return; }
+  const ahora = new Date(); const p = new Date(ahora); p.setHours(r.hora, r.minuto, 0, 0);
+  const diaJs = (r.dia + 1) % 7; let d = (diaJs - ahora.getDay() + 7) % 7; if (d === 0 && p <= ahora) d = 7; p.setDate(p.getDate() + d);
+  $("rProxima").textContent = p.toLocaleString("es-ES", {weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+}
+function pintarPersonas() {
+  if (!USUARIOS.length) { $("lista").innerHTML = '<div class="vacio">Todavía no hay nadie. Pulsa «Añadir persona».</div>'; return; }
+  const grupos = new Map();
+  [...USUARIOS].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+    .forEach(u => { const k = u.seccion || ""; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(u); });
+  const lista = secciones(), pos = (k) => k === "" ? 1e9 : (lista.indexOf(k) + 1 || 1e8);
+  const orden = [...grupos.keys()].sort((a, b) => pos(a) - pos(b));
+  const conTitulos = orden.length > 1 || orden[0] !== "";
+  if (!conTitulos) { $("lista").innerHTML = `<div class="personas">${grupos.get("").map(tarjetaPersona).join("")}</div>`; return; }
+  if (SECCION_ABIERTA !== null && !grupos.has(SECCION_ABIERTA)) SECCION_ABIERTA = null;
+  $("lista").innerHTML = orden.map(k => {
+    const lista = grupos.get(k), activos = lista.filter(u => u.activo).length, sin = lista.length - activos;
+    const inv = lista.reduce((n, u) => n + u.invitados.length, 0), abierta = SECCION_ABIERTA === k;
+    return `<div class="acordeon${abierta ? " abierta" : ""}">
+      <button type="button" class="acordeon-cab" aria-expanded="${abierta}" onclick='abrirSeccion(${esc(JSON.stringify(k))})'>
+        <svg class="i flecha" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        <span class="acordeon-nom">${esc(k || "Sin sección")}</span>
+        <span class="chip">${lista.length} persona${lista.length === 1 ? "" : "s"}</span>
+        ${activos ? `<span class="chip on">${activos} con código</span>` : ""}
+        ${sin ? `<span class="chip mal">${sin} sin código</span>` : ""}
+        ${inv ? `<span class="chip aviso">${inv} invitado${inv === 1 ? "" : "s"}</span>` : ""}
+      </button>
+      ${abierta ? `<div class="acordeon-cuerpo"><div class="personas">${lista.map(tarjetaPersona).join("")}</div></div>` : ""}
+    </div>`;
+  }).join("");
+}
+let SECCION_ABIERTA = null;  // todas cerradas al entrar; solo una abierta a la vez
+function abrirSeccion(k) {
+  SECCION_ABIERTA = SECCION_ABIERTA === k ? null : k;
+  pintarPersonas();
+  if (SECCION_ABIERTA !== null) {
+    const el = [...document.querySelectorAll(".acordeon")].find(a => a.classList.contains("abierta"));
+    if (el && el.getBoundingClientRect().top < 120) el.scrollIntoView({behavior: "smooth", block: "start"});
+  }
+}
+function secciones() { return [...new Set([...(CONFIG?.secciones || []), ...USUARIOS.map(u => u.seccion).filter(Boolean)])]; }
+function tarjetaPersona(u) {
+  {
+    const tipo = u.fijo ? '<span class="chip aviso">Fijo</span>' : (u.automatico ? '<span class="chip">Semanal</span>' : '<span class="chip">Temporal</span>');
+    const estado = (u.activo ? '<span class="chip on">Activo</span>' : '<span class="chip mal">Sin código</span>')
+      + (u.canal_envio !== "whatsapp" && !u.telegram ? '<span class="chip aviso">Telegram sin conectar</span>' : "");
+    const vence = u.activo ? (u.fijo ? "No caduca" : "Caduca " + fecha(u.caduca)) : "";
+    return `<div class="persona" id="p-${esc(u.id)}">
+      <div class="persona-cab">
+        <div class="avatar" style="background:${color(u.nombre)}">${esc(iniciales(u.nombre))}</div>
+        <div style="flex:1; min-width:0"><div class="nombre">${esc(u.nombre)}</div><div class="chips">${estado}${tipo}</div></div>
+        <button class="fantasma icono-btn" title="Mostrar teléfono y código" onclick="revelar('${u.id}', this)">${ico("ojo")}</button>
+      </div>
+      <div class="secreto tel"><span class="etq">Teléfono</span><span class="valor" data-tel>${esc(u.telefono)}</span></div>
+      ${u.activo ? `<div class="secreto"><span class="etq">Código</span><span class="valor" data-cod>••••••</span>
+        <span class="muted peq">${esc(vence)}</span></div>` : ""}
+      ${u.invitados.length ? `<div class="invitados"><b>Invitados</b>${u.invitados.map(i => `
+        <div class="invitado"><span class="chip aviso">${ico("invitado")}</span>
+          <span style="font-family:ui-monospace,Menlo,monospace; font-weight:600" data-inv="${esc(i.nombre_auth)}">••••••</span>
+          <span class="muted">hasta ${esc(fecha(i.hasta))}${i.motivo ? " · " + esc(i.motivo) : ""}</span>
+          <button class="fantasma icono-btn peligro" title="Anular" onclick="anularInvitado('${esc(i.nombre_auth)}', this)">${ico("bloquear")}</button></div>`).join("")}</div>` : ""}
+      <div class="acciones">
+        <button class="principal" onclick="renovar('${u.id}', this)">${ico("renovar")}${u.activo ? "Renovar" : "Crear código"}</button>
+        <button onclick="abrirInvitado('${u.id}')">${ico("invitado")}Invitado</button>
+        <div class="herramientas">
+          ${u.activo ? `<button class="fantasma icono-btn" title="Anular código" aria-label="Anular código" onclick="borrarCodigo('${u.id}', this)">${ico("bloquear")}</button>` : ""}
+          ${u.canal_envio !== "whatsapp" ? `<button class="fantasma icono-btn" title="${u.telegram ? "Telegram vinculado" : "Conectar Telegram"}" aria-label="Telegram" style="${u.telegram ? "color:var(--accent)" : ""}" onclick="abrirTelegram('${u.id}')">${ico("telegram")}</button>` : ""}
+          <button class="fantasma icono-btn" title="Enviar mensaje de prueba" aria-label="Enviar mensaje de prueba" onclick="probar('${u.id}', this)">${ico(u.canal_envio === "telegram" ? "telegram" : "whatsapp")}</button>
+          <button class="fantasma icono-btn" title="Editar" aria-label="Editar" onclick="abrirPersona('${u.id}')">${ico("editar")}</button>
+          <button class="fantasma icono-btn peligro" title="Eliminar" aria-label="Eliminar" onclick="eliminar('${u.id}', this)">${ico("papelera")}</button>
+        </div>
+      </div>
+    </div>`; }
+}
+async function revelar(id, b) {
+  const tarjeta = $("p-" + id), u = USUARIOS.find(x => x.id === id);
+  if (b.dataset.visible) { pintarPersonas(); return; }
+  await conBoton(b, async () => {
+    const r = (await api("POST", `/api/revelar/${id}`, {})).resultado;
+    tarjeta.querySelector("[data-tel]").textContent = r.telefono;
+    const c = tarjeta.querySelector("[data-cod]"); if (c) c.textContent = r.codigo || "(desconocido)";
+    tarjeta.querySelectorAll("[data-inv]").forEach(e => e.textContent = r.invitados[e.dataset.inv] || "••••••");
+    const nb = tarjeta.querySelector(".persona-cab button"); nb.dataset.visible = "1"; nb.innerHTML = ico("ojo-no"); nb.title = "Ocultar";
+    setTimeout(() => { if (nb.isConnected && nb.dataset.visible) pintarPersonas(); }, 30000);
+  });
+}
+function pintarOtros(otros) {
+  $("otrosCard").hidden = !otros.length;
+  $("otros").innerHTML = otros.map(o => `<tr><td><b>${esc(o.nombre)}</b></td><td class="muted">${o.hasta ? "hasta " + esc(fecha(o.hasta)) : "sin fecha de fin"}</td>
+    <td style="text-align:right"><button class="peligro" onclick="borrarOtro('${esc(o.id)}', '${esc(o.nombre)}', this)">${ico("papelera")}Borrar</button></td></tr>`).join("");
+}
+const nombreDe = (id) => (USUARIOS.find(u => u.id === id) || {}).nombre || id;
+
+function mostrarResultado(titulo, r) {
+  $("resTitulo").textContent = titulo;
+  $("resCuerpo").innerHTML = (simulando() ? '<div class="aviso">Modo prueba: no se ha cambiado nada ni se ha enviado nada.</div>' : "") +
+    (r.codigo ? `<div class="codigo-grande">${esc(r.codigo)}</div><div class="muted">${r.hasta ? "Válido hasta " + esc(fecha(r.hasta)) : "Código fijo: no caduca"}</div>` : "") +
+    (r.mensaje ? `<p class="muted peq">«${esc(r.mensaje)}»</p>` : "") +
+    (r.enlace ? `<p><a class="boton principal" href="${esc(r.enlace)}" target="_blank" rel="noopener">${ico("whatsapp")}Abrir WhatsApp para enviarlo</a></p>`
+              : (r.codigo && !simulando() ? '<p>✅ WhatsApp enviado.</p>' : ""));
+  $("dlgResultado").showModal();
+}
+async function renovar(id, b) {
+  const u = USUARIOS.find(x => x.id === id) || {};
+  let codigo = "";
+  if (u.fijo) { codigo = await confirmar("6 cifras del 1 al 9, sin empezar por 12 y que no se haya usado antes. Déjalo vacío para uno al azar.",
+    {titulo: `Código fijo para ${u.nombre}`, boton: "Crear", campo: "Vacío = al azar"}); if (codigo === null) return; }
+  conBoton(b, async () => mostrarResultado(`Código para ${nombreDe(id)}`, (await api("POST", `/api/renovar/${id}`, {simular: simulando(), codigo})).resultado));
+}
+function probar(id, b) {
+  conBoton(b, async () => { const r = (await api("POST", `/api/probar/${id}`, {simular: simulando()})).resultado;
+    if (r.enlace) window.open(r.enlace, "_blank"); else aviso(simulando() ? "Prueba simulada correcta" : "Mensaje de prueba enviado"); });
+}
+async function borrarCodigo(id, b) {
+  if (!await confirmar(`Dejará de abrir la puerta al instante.`, {titulo: `¿Anular el código de ${nombreDe(id)}?`, boton: "Anular", peligro: true})) return;
+  conBoton(b, async () => { await api("POST", `/api/borrar-codigo/${id}`, {simular: simulando()}); aviso("Código anulado"); cargarEstado(); });
+}
+async function eliminar(id, b) {
+  if (!await confirmar(`Se anulará su código y desaparecerá de la lista.`, {titulo: `¿Eliminar a ${nombreDe(id)}?`, boton: "Eliminar", peligro: true})) return;
+  conBoton(b, async () => { await api("POST", `/api/eliminar/${id}`, {simular: simulando()}); aviso(simulando() ? "Prueba: no se ha eliminado nada" : "Persona eliminada"); cargarEstado(); });
+}
+async function borrarOtro(authId, nombre, b) {
+  if (!await confirmar(`No se puede deshacer.`, {titulo: `¿Borrar el código «${nombre}»?`, boton: "Borrar", peligro: true})) return;
+  conBoton(b, async () => { await api("POST", `/api/borrar-auth/${authId}`, {simular: simulando(), nombre}); aviso("Código borrado"); cargarEstado(); });
+}
+async function rotarTodos(b) {
+  if (!await confirmar("Los códigos actuales dejarán de funcionar y se enviarán los nuevos.", {titulo: "¿Renovar ya los códigos semanales?", boton: "Renovar"})) return;
+  conBoton(b, async () => {
+    const filas = Object.entries((await api("POST", "/api/rotar", {simular: simulando()})).resultado);
+    $("resTitulo").textContent = "Códigos renovados";
+    $("resCuerpo").innerHTML = (simulando() ? '<div class="aviso">Modo prueba: no se ha cambiado nada.</div>' : "") +
+      (filas.length ? `<table>${filas.map(([n, x]) => `<tr><td><b>${esc(n)}</b></td><td>${x.error ? `<span class="peligro">${esc(x.error)}</span>` : `<span style="font-family:ui-monospace,Menlo,monospace; font-weight:700">${esc(x.codigo)}</span>`}</td>
+        <td>${x.enlace ? `<a class="boton" href="${esc(x.enlace)}" target="_blank" rel="noopener">${ico("whatsapp")}</a>` : ""}</td></tr>`).join("")}</table>`
+        : '<div class="vacio">No hay personas con código semanal.</div>');
+    $("dlgResultado").showModal();
+  });
+}
+function abrirInvitado(id) {
+  $("invTitulo").textContent = `Invitado de ${nombreDe(id)}`;
+  $("i_para").value = id; $("i_motivo").value = ""; $("i_dest").value = "inquilino"; $("i_tel").value = "+34"; $("i_tel").classList.add("oculto");
+  $("dlgInvitado").showModal();
+}
+async function crearInvitado(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    const id = $("i_para").value;
+    const r = await api("POST", `/api/invitado/${id}`, {simular: simulando(), horas: $("i_horas").value, motivo: $("i_motivo").value,
+      telefono: $("i_dest").value === "invitado" ? $("i_tel").value : null});
+    $("dlgInvitado").close(); mostrarResultado(`Invitado de ${nombreDe(id)}`, r.resultado);
+  });
+}
+async function anularInvitado(n, b) {
+  if (!await confirmar("Dejará de funcionar al instante.", {titulo: "¿Anular este código de invitado?", boton: "Anular", peligro: true})) return;
+  conBoton(b, async () => { await api("POST", `/api/anular-invitado/${encodeURIComponent(n)}`, {simular: simulando()}); aviso("Invitado anulado"); cargarEstado(); });
+}
+function abrirPersona(id) {
+  const u = USUARIOS.find(x => x.id === id);
+  $("pTitulo").textContent = u ? `Editar a ${u.nombre}` : "Añadir persona";
+  $("p_id").value = u ? u.id : ""; $("p_nombre").value = u ? u.nombre : "";
+  $("p_tel").value = u ? "" : "+34"; $("p_tel").required = !u;
+  $("p_telAyuda").textContent = u ? `Actual: ${u.telefono}. Déjalo vacío para no cambiarlo.` : "";
+  $("p_tipo").value = u ? (u.fijo ? "fijo" : (u.automatico ? "semanal" : "manual")) : "semanal";
+  $("p_seccion").innerHTML = '<option value="">Sin sección</option>' + secciones().map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  $("p_seccion").value = u ? (u.seccion || "") : "";
+  $("p_canal").value = u ? (u.canal_envio || "whatsapp") : "whatsapp";
+  $("p_canalAyuda").textContent = !CONFIG?.telegram?.configurado ? "Para usar Telegram, el administrador tiene que configurar el bot en Ajustes."
+    : (u && u.telegram ? "Telegram vinculado ✓" : "Con Telegram: después de guardar, pulsa el botón de Telegram de su ficha para enviarle el enlace de conexión.");
+  $("p_apikey").value = ""; $("p_apikey").placeholder = u && u.tiene_apikey ? "Guardada (vacío = no cambiar)" : "";
+  $("p_apikeyBloque").classList.toggle("oculto", CONFIG?.whatsapp?.proveedor !== "callmebot");
+  $("dlgPersona").showModal();
+}
+async function guardarPersona(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    await api("POST", "/api/destinatario", {id: $("p_id").value || null, nombre: $("p_nombre").value, telefono: $("p_tel").value,
+      tipo: $("p_tipo").value, seccion: $("p_seccion").value, canal_envio: $("p_canal").value, callmebot_apikey: $("p_apikey").value});
+    $("dlgPersona").close(); aviso("Guardado"); cargarEstado();
+  });
+}
+
+// ================= entradas
+function rellenarFiltroPersonas() {
+  const s = $("fPersona"), v = s.value;
+  s.innerHTML = '<option value="">Todas las personas</option>' + USUARIOS.map(u => `<option value="${esc(u.id)}">${esc(u.nombre)} (y sus invitados)</option>`).join("");
+  s.value = v;
+}
+function cargarRegistro(b) {
+  return conBoton(b, async () => {
+    $("registro").innerHTML = '<div class="vacio">Leyendo la cerradura…</div>';
+    try { REGISTRO = (await api("GET", `/api/registro?limite=${$("fLimite").value}`)).resultado; pintarRegistro(); }
+    catch (e) { $("registro").innerHTML = `<div class="aviso">${esc(e.message)}</div>`; }
+  });
+}
+const esNoche = (iso) => new Date(iso).getHours() < 7;
+function pintarRegistro() {
+  const p = $("fPersona").value, t = $("fTipo").value;
+  const f = REGISTRO.filter(e => (!p || e.persona_id === p) && (!t || (t === "entradas" && e.sentido === "Entrada con código") ||
+    (t === "invitados" && e.tipo_persona === "invitado") || (t === "fallos" && !e.ok) || (t === "noche" && esNoche(e.fecha)) || (t === "desactivados" && e.tipo_persona === "desactivado")));
+  if (!f.length) { $("registro").innerHTML = '<div class="vacio">No hay eventos con estos filtros.</div>'; return; }
+  $("registro").innerHTML = `<table><thead><tr><th>Fecha</th><th>Quién</th><th>Qué</th><th>Cómo</th><th>Resultado</th></tr></thead><tbody>` +
+    f.map(e => `<tr class="${e.ok ? "" : "mal"} ${esNoche(e.fecha) ? "noche" : ""}"><td>${esc(fecha(e.fecha))}</td>
+      <td>${esc(e.quien)}${e.tipo_persona === "invitado" ? ' <span class="chip aviso">invitado</span>' : ""}${e.tipo_persona === "desactivado" ? ' <span class="chip mal">dado de baja</span>' : ""}</td>
+      <td>${esc(e.sentido)}</td><td class="muted peq">${esc(e.origen)}</td>
+      <td>${e.ok ? '<span class="chip on">OK</span>' : `<span class="chip mal">${esc(e.estado)}</span>`}</td></tr>`).join("") + "</tbody></table>";
+}
+
+// ================= historial
+let CODIGOS = [];
+function cargarHistorial(b) {
+  return conBoton(b, async () => {
+    const q = histRevelado ? "&revelar=1" : "";
+    [HISTORIAL, CODIGOS] = await Promise.all([api("GET", `/api/historial?limite=2000${q}`), api("GET", `/api/codigos?x=1${q}`)]).then(r => r.map(x => x.resultado));
+    pintarHistorial(); pintarCodigos();
+  });
+}
+function estadoCodigo(c) {
+  if (c.retirado) return "retirado";
+  if (c.baja) return "vigilado";
+  if (c.hasta && new Date(c.hasta) < new Date()) return "caducado";
+  return "activo";
+}
+function pintarCodigos() {
+  const f = $("cFiltro").value, l = CODIGOS.filter(c => !f || estadoCodigo(c) === f);
+  if (!l.length) { $("codigos").innerHTML = '<div class="vacio">Todavía no hay códigos registrados.</div>'; return; }
+  const chip = {activo: '<span class="chip on">Activo</span>', vigilado: '<span class="chip aviso">Desactivado · vigilado</span>',
+    retirado: '<span class="chip">Retirado</span>', caducado: '<span class="chip">Caducado</span>'};
+  $("codigos").innerHTML = `<table><thead><tr><th>Código</th><th>Persona</th><th>Tipo</th><th>Desde</th><th>Hasta / baja</th><th>Estado</th></tr></thead><tbody>` +
+    l.map(c => `<tr><td style="font-family:ui-monospace,Menlo,monospace; font-weight:600">${esc(c.codigo)}</td><td>${esc(c.persona)}</td>
+      <td class="peq">${esc(c.tipo)}${c.motivo ? " · " + esc(c.motivo) : ""}</td><td class="peq">${esc(fecha(c.desde, true))}</td>
+      <td class="peq">${c.baja ? "Baja " + esc(fecha(c.baja, true)) + (c.motivo_baja ? " · " + esc(c.motivo_baja) : "") : (c.hasta ? esc(fecha(c.hasta, true)) : "sin fin")}</td>
+      <td>${chip[estadoCodigo(c)]}</td></tr>`).join("") + "</tbody></table>";
+}
+function revelarHistorial(b) {
+  histRevelado = !histRevelado;
+  b.innerHTML = histRevelado ? ico("ojo-no") + "Ocultar datos" : ico("ojo") + "Mostrar datos";
+  cargarHistorial(b);
+}
+function categoria(e) {
+  const a = (e.accion || "").toLowerCase();
+  if (!e.ok || a.startsWith("error")) return "error";
+  if (e.usuario === "Docker / WhatsApp") return "docker";
+  if (a.includes("sesión") || a.includes("acceso") || a.includes("contraseña") || a.includes("mostrados")) return "acceso";
+  if (a.includes("invitado")) return "invitado";
+  if (a.includes("whatsapp")) return "whatsapp";
+  if (a.includes("código")) return "codigo";
+  return "otro";
+}
+function pintarHistorial() {
+  const t = $("hTipo").value, q = $("hBuscar").value.toLowerCase(), pr = $("hPruebas").checked;
+  const f = HISTORIAL.filter(e => (pr || !e.simulado) && (!t || categoria(e) === t || (t === "error" && !e.ok)) && (!q || JSON.stringify(e).toLowerCase().includes(q)));
+  if (!f.length) { $("historial").innerHTML = '<div class="vacio">No hay entradas.</div>'; return; }
+  const origen = {panel: "Panel", semanal: "Automático", terminal: "Terminal"};
+  $("historial").innerHTML = `<table><thead><tr><th>Fecha</th><th>Acción</th><th>Sobre</th><th>Detalle</th><th>Quién</th></tr></thead><tbody>` +
+    f.map(e => `<tr class="${e.ok ? "" : "mal"}"><td class="peq">${esc(fecha(e.fecha, true))}</td>
+      <td>${esc(e.accion)}${e.simulado ? ' <span class="chip">prueba</span>' : ""}</td><td>${esc(e.usuario)}</td>
+      <td class="muted peq">${esc(e.detalle)}</td><td class="muted peq">${esc(e.gestor || origen[e.origen] || e.origen || "")}</td></tr>`).join("") + "</tbody></table>";
+}
+
+// ================= WhatsApp / WAHA
+const SES = {WORKING: "Vinculado y funcionando", SCAN_QR_CODE: "Esperando que escanees el QR", STARTING: "Arrancando…", STOPPED: "Parada",
+  FAILED: "Ha fallado", NO_RESPONDE: "No responde", CLAVE_INCORRECTA: "Clave incorrecta", DESCONOCIDO: "Desconocido"};
+const CONT = {running: "En marcha", exited: "Parado", restarting: "Reiniciándose", created: "Creado", "no-existe": "No instalado", "sin-acceso": "Sin acceso a Docker"};
+function cargarDocker(b) { return conBoton(b, async () => pintarDocker((await api("GET", "/api/docker/estado")).resultado)); }
+function paso(ok, t, d, btn) { return `<div class="paso"><div class="ico">${ok === true ? "✅" : ok === "espera" ? "⏳" : "⚪️"}</div><div><b>${t}</b><div class="muted peq">${d}</div></div><div class="acciones">${btn || ""}</div></div>`; }
+function pintarDocker(d) {
+  const s = d.sesion.estado;
+  $("pasos").innerHTML =
+    paso(d.contenedor === "running", "Servicio WAHA", (CONT[d.contenedor] || d.contenedor) + (d.info?.iniciado ? ` · desde ${esc(fecha(d.info.iniciado))}` : ""),
+      d.contenedor === "exited" ? `<button class="principal" onclick="docker('arrancar', this)">Arrancar</button>` : "") +
+    paso(s === "WORKING" ? true : (s === "SCAN_QR_CODE" || s === "STARTING" ? "espera" : false), "WhatsApp vinculado",
+      (SES[s] || s) + (d.sesion.numero ? ` · +${esc(d.sesion.numero)}${d.sesion.nombre ? " (" + esc(d.sesion.nombre) + ")" : ""}` : ""),
+      d.contenedor === "running" && (s === "STOPPED" || s === "FAILED") ? `<button class="principal" onclick="docker('iniciar-sesion', this)">Iniciar sesión</button>` : "");
+  const qr = s === "SCAN_QR_CODE"; $("qrCard").hidden = !qr;
+  if (qr) $("qrImg").src = `/api/docker/qr?csrf=${encodeURIComponent(YO.csrf)}&t=${Date.now()}`;
+  clearInterval(qrTimer);
+  if (qr || s === "STARTING" || d.contenedor === "restarting") qrTimer = setInterval(() => cargarDocker(), qr ? 15000 : 5000);
+}
+async function docker(a, b, pregunta) { if (pregunta && !await confirmar(pregunta, {boton: "Continuar", peligro: true})) return; conBoton(b, async () => { await api("POST", `/api/docker/${a}`, {}); aviso("Hecho"); await cargarDocker(); }); }
+function verLogs(b) { conBoton(b, async () => { const r = await api("GET", "/api/docker/logs"); $("logs").textContent = r.resultado || "(vacío)"; $("logs").classList.remove("oculto"); $("logs").scrollTop = 1e9; }); }
+
+// ================= cuentas (admin)
+async function cargarCuentas() {
+  ADMIN = (await api("GET", "/api/admin/cuentas")).resultado;
+  $("listaCuentas").innerHTML = ADMIN.cuentas.map(c => {
+    const us = ADMIN.usuarios.filter(u => u.cuenta === c.id);
+    return `<div class="subcard">
+      <div class="cab" style="margin-bottom:8px"><div><b>${esc(c.nombre)}</b> ${c.id === YO.cuenta ? '<span class="chip on">abierta</span>' : ""}<div class="muted peq">${esc(c.id)}</div></div>
+        <div class="acciones">${c.id !== YO.cuenta ? `<button onclick="cambiarCuenta('${esc(c.id)}')">Abrir</button>` : ""}
+          <button onclick="abrirNuevaCasa('${esc(c.id)}')">${ico("editar")}Editar casa</button></div></div>
+      <div class="muted peq" style="margin:-2px 0 6px">${(CAMARA?.dispositivos || []).filter(d => d.cuenta === c.id).map(d => "📷 " + esc(d.nombre)).join(" · ") || "Sin cámaras"}</div>
+      ${us.length ? `<table><tbody>${us.map(u => `<tr><td><div style="display:flex; gap:8px; align-items:center"><div class="avatar" style="width:30px; height:30px; font-size:12px; background:${color(u.nombre)}">${esc(iniciales(u.nombre))}</div>
+          <div><b>${esc(u.nombre)}</b><div class="muted peq">${esc(u.usuario)}</div></div></div></td>
+        <td><span class="chip ${u.rol === "admin" ? "aviso" : ""}">${u.rol === "admin" ? "Administrador" : "Gestor"}</span></td>
+        <td style="text-align:right"><div class="acciones" style="justify-content:flex-end">
+          <button class="fantasma icono-btn" title="Editar" onclick="abrirUsuarioPanel('${esc(u.usuario)}')">${ico("editar")}</button>
+          <button class="fantasma icono-btn" title="Nueva contraseña" onclick="resetPassword('${esc(u.usuario)}', this)">${ico("llave")}</button>
+          ${u.usuario !== YO.usuario ? `<button class="fantasma icono-btn peligro" title="Borrar" onclick="borrarUsuarioPanel('${esc(u.usuario)}', this)">${ico("papelera")}</button>` : ""}
+        </div></td></tr>`).join("")}</tbody></table>` : '<div class="muted peq">Sin usuarios todavía.</div>'}
+    </div>`; }).join("");
+}
+// ---------- asistente «Nueva casa»
+let NC = {paso: 1};
+async function abrirNuevaCasa(editar) {
+  NC = {paso: 1, camaras: {}, editar: editar || null};
+  $("nc_nombre").value = ""; $("nc_token").value = ""; $("nc_token").placeholder = "web.nuki.io → API → Generar token";
+  $("nc_lock").innerHTML = '<option value="">Pulsa «Buscar» para ver tus cerraduras</option>';
+  document.querySelectorAll('[name="nc_nuki"]').forEach(r => r.checked = false);
+  try { CAMARA = (await api("GET", "/api/camara")).resultado; } catch (e) {}
+  NC.hayCamaras = (CAMARA?.dispositivos || []).length > 0;
+  if (editar) {
+    let info; try { info = (await api("GET", "/api/admin/casa/" + encodeURIComponent(editar))).resultado; } catch (e) { return aviso("⚠️ " + e.message); }
+    NC.teniaNuki = info.nuki;
+    $("nc_nombre").value = (YO.cuentas || []).find(c => c.id === editar)?.nombre || editar;
+    const r = document.querySelector(`[name="nc_nuki"][value="${info.nuki ? "si" : info.solo_camara ? "no" : "x"}"]`); if (r) r.checked = true;
+    if (info.nuki) {
+      $("nc_token").placeholder = "Guardado en la bóveda ✓ (vacío = no cambiar)";
+      $("nc_lock").innerHTML = `<option value="${esc(info.smartlock_id)}">Cerradura actual (${esc(info.smartlock_id)}) · «Buscar» para cambiarla</option>`;
+    }
+    (CAMARA?.dispositivos || []).filter(d => d.cuenta === editar).forEach(d => NC.camaras[d.serial] = {si: true, pred: d.predeterminada, mov: d.movimiento});
+  }
+  ncNuki();
+  ncMostrar(); dlgCuenta.showModal(); $("nc_nombre").focus();
+}
+function ncNuki() {
+  const v = document.querySelector('[name="nc_nuki"]:checked')?.value;
+  $("ncNukiCampos").classList.toggle("oculto", v !== "si");
+  $("ncQuitarNuki").classList.toggle("oculto", !(NC.editar && NC.teniaNuki && v === "no"));
+}
+function ncBuscar(b) {
+  conBoton(b, async () => {
+    if (!$("nc_token").value.trim()) throw new Error("Para buscar otra cerradura pega el token (el guardado no se puede leer desde aquí).");
+    const r = (await api("POST", "/api/admin/nuki/cerraduras", {token: $("nc_token").value})).resultado;
+    $("nc_lock").innerHTML = r.length ? r.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)} (${esc(c.id)})</option>`).join("") : '<option value="">No hay cerraduras en esa cuenta de Nuki</option>';
+  });
+}
+function ncPasos() { return NC.hayCamaras ? [1, 2, 3, 4] : [1, 2, 4]; }
+function ncMostrar() {
+  const pasos = ncPasos(), i = pasos.indexOf(NC.paso);
+  document.querySelectorAll("#dlgCuenta [data-paso]").forEach(d => d.classList.toggle("oculto", +d.dataset.paso !== NC.paso));
+  $("ncPasoTxt").textContent = `Paso ${i + 1} de ${pasos.length}`;
+  $("ncTitulo").textContent = {1: NC.editar ? "Editar casa" : "Nueva casa", 2: "Cerradura", 3: "Cámaras", 4: NC.editar ? "Revisa los cambios" : "Todo listo"}[NC.paso];
+  $("ncAtras").classList.toggle("oculto", i === 0);
+  $("ncSiguiente").textContent = NC.paso === 4 ? (NC.editar ? "Guardar cambios" : "Crear la casa") : "Siguiente";
+  if (NC.paso === 3) {
+    const nombres = Object.fromEntries((YO.cuentas || []).map(c => [c.id, c.nombre]));
+    $("ncCamaras").innerHTML = CAMARA.dispositivos.map(d => { const e = NC.camaras[d.serial] || {}; return `<div class="cam-disp">
+      <label style="display:flex; gap:8px; align-items:center"><input type="checkbox" data-nc="${esc(d.serial)}" ${e.si ? "checked" : ""} onchange="ncCam('${esc(d.serial)}', 'si', this.checked)">
+        <span><b>${esc(d.nombre)}</b><div class="muted peq">${d.cuenta === CAMARA.sin_casa ? "sin casa" : d.cuenta === NC.editar ? "en esta casa" : "ahora en: " + esc(nombres[d.cuenta] || d.cuenta)}</div></span></label>
+      <span style="display:flex; gap:8px">
+        <label class="dia" style="width:auto; padding:0 10px"><input type="radio" name="nc_pred" ${e.pred ? "checked" : ""} onchange="ncPred('${esc(d.serial)}')">⭐</label>
+        <label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" ${e.mov ? "checked" : ""} onchange="ncCam('${esc(d.serial)}', 'mov', this.checked)">📷</label></span></div>`; }).join("");
+  }
+  if (NC.paso === 4) {
+    const cams = Object.entries(NC.camaras).filter(([, e]) => e.si).map(([sn, e]) => (CAMARA.dispositivos.find(d => d.serial === sn)?.nombre || sn) + (e.pred ? " ⭐" : "") + (e.mov ? " 📷" : ""));
+    $("ncResumen").innerHTML = `<p><b>Casa:</b> ${esc(NC.nombre)}</p>
+      <p><b>Cerradura:</b> ${NC.nuki ? "Nuki · " + esc($("nc_lock").selectedOptions[0]?.textContent || "") : "sin cerradura (solo cámara)"}${NC.editar && NC.teniaNuki && !NC.nuki ? " · <b style='color:var(--warn)'>se quitará Nuki</b>" : ""}</p>
+      ${NC.hayCamaras ? `<p><b>Cámaras:</b> ${cams.length ? esc(cams.join(", ")) : "ninguna"}</p>` : ""}`;
+  }
+}
+function ncCam(sn, k, v) { NC.camaras[sn] = {...(NC.camaras[sn] || {}), [k]: v}; if (k === "si" && !v) NC.camaras[sn] = {}; if (k !== "si" && v) { NC.camaras[sn].si = true; ncMostrar(); } }
+function ncPred(sn) { Object.values(NC.camaras).forEach(e => e.pred = false); ncCam(sn, "pred", true); }
+async function pasoCasa(ev, dir = 1) {
+  if (ev) ev.preventDefault();
+  const pasos = ncPasos(), i = pasos.indexOf(NC.paso);
+  if (dir < 0) { NC.paso = pasos[Math.max(0, i - 1)]; return ncMostrar(); }
+  if (NC.paso === 1) {
+    NC.nombre = $("nc_nombre").value.trim();
+    if (!NC.nombre) return aviso("Ponle un nombre a la casa");
+  }
+  if (NC.paso === 2) {
+    const v = document.querySelector('[name="nc_nuki"]:checked')?.value;
+    if (!v) return aviso("Elige si tiene cerradura Nuki o no");
+    NC.nuki = v === "si";
+    if (NC.nuki && ((!$("nc_token").value.trim() && !NC.teniaNuki) || !$("nc_lock").value)) return aviso("Pega el token, pulsa «Buscar» y elige la cerradura");
+  }
+  if (NC.paso === 3 && Object.values(NC.camaras).some(e => e.si) && !Object.values(NC.camaras).some(e => e.si && e.pred)) {
+    const primera = Object.keys(NC.camaras).find(sn => NC.camaras[sn].si); NC.camaras[primera].pred = true;
+  }
+  if (NC.paso !== 4) { NC.paso = pasos[i + 1]; return ncMostrar(); }
+  if (NC.editar) return conBoton(ev?.submitter || $("ncSiguiente"), async () => {
+    await api("POST", "/api/admin/casa/" + encodeURIComponent(NC.editar), {nombre: NC.nombre, nuki: NC.nuki ? "si" : "no",
+      token: $("nc_token").value.trim(), smartlock_id: $("nc_lock").value, camaras: NC.camaras});
+    $("nc_token").value = ""; dlgCuenta.close(); aviso(`Casa «${NC.nombre}» guardada`);
+    await refrescarYo(); await cargarCamara(null, true);
+    if (NC.editar === YO.cuenta) await arrancarApp(); else cargarCuentas();
+  });
+  await conBoton(ev?.submitter || $("ncSiguiente"), async () => {
+    const id = (await api("POST", "/api/admin/cuenta", {nombre: NC.nombre})).resultado;
+    await api("POST", "/api/cambiar-cuenta", {cuenta: id});
+    await api("POST", "/api/config", NC.nuki ? {solo_camara: false, token: $("nc_token").value.trim(), smartlock_id: $("nc_lock").value}
+                                              : {solo_camara: true});
+    for (const [serial, e] of Object.entries(NC.camaras).filter(([, e]) => e.si))
+      await api("POST", "/api/admin/camara/asignar", {serial, cuenta: id, predeterminada: !!e.pred, movimiento: !!e.mov});
+    $("nc_token").value = ""; dlgCuenta.close();
+    aviso(`Casa «${NC.nombre}» creada`);
+    await refrescarYo(); await arrancarApp();
+  });
+}
+async function renombrarCuenta(id, actual) {
+  const n = await confirmar("", {titulo: "Renombrar cuenta", boton: "Guardar", campo: "Nombre", valor: actual}); if (!n) return;
+  await conBoton(null, async () => { await api("POST", `/api/admin/cuenta/${id}/renombrar`, {nombre: n}); await refrescarYo(); cargarCuentas(); });
+}
+async function refrescarYo() { const r = await (await fetch("/api/yo", {credentials: "same-origin"})).json(); YO = r.resultado;
+  $("selCuenta").innerHTML = YO.cuentas.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join(""); $("selCuenta").value = YO.cuenta;
+  $("selCuenta").classList.toggle("oculto", YO.cuentas.length < 2); }
+function abrirUsuarioPanel(usuario) {
+  const u = usuario ? ADMIN.usuarios.find(x => x.usuario === usuario) : null;
+  $("upTitulo").textContent = u ? `Editar a ${u.nombre}` : "Nuevo usuario";
+  $("up_editar").value = u ? u.usuario : "";
+  $("up_nombre").value = u ? u.nombre : ""; $("up_usuario").value = u ? u.usuario : ""; $("up_usuario").disabled = !!u;
+  $("up_cuenta").innerHTML = ADMIN.cuentas.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join("");
+  $("up_cuenta").value = u ? u.cuenta : YO.cuenta; $("up_rol").value = u ? u.rol : "gestor";
+  $("up_passBloque").classList.toggle("oculto", !!u); $("up_password").required = !u; $("up_password").value = u ? "" : generarPassword();
+  $("dlgUsuarioPanel").showModal();
+}
+async function guardarUsuarioPanel(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    const editar = $("up_editar").value;
+    if (editar) await api("POST", `/api/admin/usuario/${encodeURIComponent(editar)}/editar`, {nombre: $("up_nombre").value, rol: $("up_rol").value, cuenta: $("up_cuenta").value});
+    else await api("POST", "/api/admin/usuario", {usuario: $("up_usuario").value, nombre: $("up_nombre").value, password: $("up_password").value, rol: $("up_rol").value, cuenta: $("up_cuenta").value});
+    dlgUsuarioPanel.close(); aviso(editar ? "Usuario actualizado" : "Usuario creado. Recuerda pasarle su contraseña."); cargarCuentas();
+  });
+}
+async function resetPassword(usuario, b) {
+  const p = generarPassword();
+  if (!await confirmar("Se cerrarán sus sesiones abiertas.", {titulo: `¿Contraseña nueva para «${usuario}»?`, boton: "Generar"})) return;
+  await conBoton(b, async () => { await api("POST", `/api/admin/usuario/${encodeURIComponent(usuario)}/password`, {password: p});
+    await confirmar("Cópiala ahora: no se volverá a mostrar.", {titulo: `Contraseña de «${usuario}»`, boton: "Hecho", campo: "", valor: p}); });
+}
+async function borrarUsuarioPanel(usuario, b) {
+  if (!await confirmar("No podrá volver a entrar.", {titulo: `¿Borrar el usuario «${usuario}»?`, boton: "Borrar", peligro: true})) return;
+  await conBoton(b, async () => { await api("POST", `/api/admin/usuario/${encodeURIComponent(usuario)}/borrar`, {}); aviso("Usuario borrado"); cargarCuentas(); });
+}
+
+// ================= ajustes
+const MSJ_FIJO = "Hola {nombre}, tu código de acceso a la puerta es {codigo}. Es personal: por favor, no lo compartas.";
+const MSJ_INV = "Código de acceso temporal: {codigo}. Válido hasta el {hasta}. Es solo para esta visita: por favor, no lo compartas.";
+// ---------- tarjetas plegables (Ajustes): todas cerradas; al abrir una se cierra la otra
+// ---------- grupos de Ajustes
+const GRUPOS_AJ = [["nuki", "🔐", "Nuki"], ["camaras", "📷", "Cámaras"], ["comunicacion", "💬", "Comunicación"], ["casas", "🏠", "Casas"]];
+let GRUPO_AJ = (() => { try { return localStorage.getItem("grupoAjustes"); } catch (e) { return null; } })();
+function gruposVisibles() {
+  return GRUPOS_AJ.filter(([g]) => [...document.querySelectorAll(`#tab-ajustes [data-grupo="${g}"]`)]
+    .some(c => !c.classList.contains("oculto") && !(c.classList.contains("solo-admin") && YO?.rol !== "admin")));
+}
+function verGrupo(g) {
+  const vis = gruposVisibles();
+  if (!vis.some(([x]) => x === g)) g = (soloCamara() ? vis.find(([x]) => x === "camaras") : null)?.[0] || vis[0]?.[0] || "nuki";
+  GRUPO_AJ = g; try { localStorage.setItem("grupoAjustes", g); } catch (e) {}
+  $("gruposAjustes").innerHTML = vis.map(([x, i, t]) => `<button type="button" class="${x === g ? "activa" : ""}" aria-pressed="${x === g}" onclick="verGrupo('${x}')">${i} ${t}</button>`).join("");
+  document.querySelectorAll("#tab-ajustes [data-grupo]").forEach(c => c.classList.toggle("fuera-grupo", c.dataset.grupo !== g));
+  clearInterval(qrTimer);
+  if (YO?.rol === "admin") {
+    if (g === "camaras") cargarEufy();
+    if (g === "comunicacion") cargarDocker();
+    if (g === "casas") cargarCuentas();
+  }
+  if (g === "casas") pintarEstaCasa();
+}
+function pintarEstaCasa() {
+  $("ecNombre").textContent = YO?.nombre_cuenta || "";
+  const n = camsCuenta().length;
+  $("ecResumen").innerHTML = `<p style="margin:0 0 4px"><b>${esc(YO?.nombre_cuenta || "")}</b> · ${CONFIG?.solo_camara ? "📷 solo cámara (sin Nuki)" : CONFIG?.nuki?.token_puesto ? "🔐 con cerradura Nuki" : "🔐 Nuki sin configurar"}
+    · ${n} cámara${n === 1 ? "" : "s"}</p>
+    <div class="acciones" style="margin-top:8px">
+      <button type="button" onclick="verGrupo('nuki'); abrirTarjeta('cardNuki', true)">${ico("puerta")}Cerradura</button>
+      ${YO?.rol === "admin" ? `<button type="button" onclick="verGrupo('camaras'); abrirTarjeta('cardEufy', true)">${ico("camara")}Cámaras</button>` : ""}
+      <button type="button" onclick="verGrupo('comunicacion'); abrirTarjeta('cardAvisos', true)">${ico("telegram")}Avisos</button>
+    </div>`;
+}
+function prepararPlegables() {
+  document.querySelectorAll("#tab-ajustes .card").forEach((card, i) => {
+    if (card.classList.contains("plegable")) return;
+    if (!card.id) card.id = "ajuste-" + i;
+    const titulo = card.querySelector(":scope > .cab, :scope > h2");
+    if (!titulo) return;
+    const cab = document.createElement("div");
+    cab.className = "plegable-cab"; cab.tabIndex = 0; cab.setAttribute("role", "button"); cab.setAttribute("aria-expanded", "false");
+    cab.innerHTML = '<svg class="i flecha" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+    const cuerpo = document.createElement("div"); cuerpo.className = "plegable-cuerpo";
+    [...card.childNodes].filter(n => n !== titulo).forEach(n => cuerpo.appendChild(n));
+    cab.appendChild(titulo); card.append(cab, cuerpo); card.classList.add("plegable");
+    if (card.closest("#ajustes")) {  // tarjetas del formulario de ajustes: su propio botón Guardar
+      const pie = document.createElement("div"); pie.className = "pie-guardar";
+      pie.innerHTML = '<button class="principal" type="submit">Guardar</button>';
+      cuerpo.appendChild(pie);
+    }
+    cab.addEventListener("click", e => { if (!e.target.closest("button, a, input, select, label")) abrirTarjeta(card.id); });
+    cab.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirTarjeta(card.id); } });
+  });
+}
+function abrirTarjeta(id, forzar) {
+  const card = $(id); if (!card) return;
+  const abrir = forzar || !card.classList.contains("abierta");
+  document.querySelectorAll("#tab-ajustes .card.plegable").forEach(c => {
+    const si = abrir && c === card; c.classList.toggle("abierta", si);
+    c.querySelector(".plegable-cab").setAttribute("aria-expanded", si);
+  });
+  if (abrir) setTimeout(() => { if (card.getBoundingClientRect().top < 110) card.scrollIntoView({behavior: "smooth", block: "start"}); }, 30);
+}
+
+// ---------- secciones
+function pintarSecciones() {
+  const lista = secciones(), caja = $("listaSeccionesAjustes");
+  if (!lista.length) { caja.innerHTML = '<div class="muted peq">Todavía no hay secciones.</div>'; return; }
+  caja.innerHTML = lista.map((x, i) => {
+    const n = USUARIOS.filter(u => u.seccion === x).length, v = esc(JSON.stringify(x));
+    return `<div class="fila-seccion"><span class="nom">${esc(x)}</span><span class="chip">${n} persona${n === 1 ? "" : "s"}</span>
+      <div class="herramientas">
+        <button type="button" class="fantasma icono-btn" title="Subir" aria-label="Subir" ${i === 0 ? "disabled" : ""} onclick='moverSeccion(${v}, -1, this)'>↑</button>
+        <button type="button" class="fantasma icono-btn" title="Bajar" aria-label="Bajar" ${i === lista.length - 1 ? "disabled" : ""} onclick='moverSeccion(${v}, 1, this)'>↓</button>
+        <button type="button" class="fantasma icono-btn" title="Renombrar" aria-label="Renombrar" onclick='renombrarSeccion(${v}, this)'>${ico("editar")}</button>
+        <button type="button" class="fantasma icono-btn peligro" title="Borrar" aria-label="Borrar" onclick='borrarSeccion(${v}, this)'>${ico("papelera")}</button>
+      </div></div>`;
+  }).join("");
+}
+async function accionSeccion(b, datos, texto) {
+  await conBoton(b, async () => {
+    CONFIG.secciones = (await api("POST", "/api/secciones", datos)).resultado;
+    if (texto) aviso(texto);
+    await cargarEstado(); pintarSecciones();
+  });
+}
+function crearSeccion(ev) {
+  ev.preventDefault();
+  const nombre = $("nuevaSeccion").value.trim(); if (!nombre) return;
+  accionSeccion(ev.submitter, {accion: "crear", nombre}, `Sección «${nombre}» creada`).then(() => $("nuevaSeccion").value = "");
+}
+async function renombrarSeccion(nombre, b) {
+  const nuevo = await confirmar(`Nuevo nombre para «${nombre}». Las personas de esta sección se mueven con ella.`,
+    {titulo: "Renombrar sección", boton: "Renombrar", campo: "Nombre", valor: nombre});
+  if (nuevo && nuevo.trim() && nuevo.trim() !== nombre) accionSeccion(b, {accion: "renombrar", nombre, nuevo: nuevo.trim()}, "Sección renombrada");
+}
+async function borrarSeccion(nombre, b) {
+  const n = USUARIOS.filter(u => u.seccion === nombre).length;
+  if (await confirmar(`Se borrará la sección «${nombre}».` + (n ? ` Sus ${n} persona(s) no se borran: pasan a «Sin sección».` : ""),
+    {titulo: "Borrar sección", boton: "Borrar", peligro: true})) accionSeccion(b, {accion: "borrar", nombre}, "Sección borrada");
+}
+function moverSeccion(nombre, paso, b) { accionSeccion(b, {accion: "mover", nombre, paso}); }
+
+// ---------- avisos de la puerta
+const REGLAS = [
+  ["desactivado", "🚨 Código desactivado", "alguien teclea un código antiguo que ya diste de baja"],
+  ["incorrecto", "⚠️ Código incorrecto", "alguien teclea un código que no existe"],
+  ["ataque", "🚨 Muchos códigos incorrectos", "aviso urgente: posible intento de entrar probando códigos al azar"],
+  ["apertura", "🚪 Cualquier apertura", "cada vez que se abre la puerta (teclado, app, llave…)"],
+  ["abierta", "🚪 Puerta abierta demasiado tiempo", "el sensor de la puerta la ve abierta más de los minutos que elijas"],
+  ["atascada", "⚠️ Cerradura atascada", "el motor no pudo terminar de girar (puerta mal cerrada o algo bloquea el cerrojo)"],
+  ["bloqueo", "🔒 Cerradura bloqueada", "cada vez que alguien bloquea la cerradura (teclado, app, botón, automático…)"],
+  ["movimiento", "📷 Movimiento o timbre", "lo detecta la cámara Eufy"],
+];
+const LETRAS = ["L", "M", "X", "J", "V", "S", "D"];
+function camsCuenta() { return (CAMARA?.dispositivos || []).filter(d => d.cuenta === YO?.cuenta); }
+function pintarReglas() {
+  const a = CONFIG.alertas || {reglas: {}, destino: {}};
+  $("reglasAvisos").innerHTML = REGLAS.filter(([t]) => !soloCamara() || t === "movimiento").map(([t, titulo, desc]) => {
+    const r = a.reglas[t] || {}, nd = t === "movimiento" && !camsCuenta().length;
+    const clipDef = t !== "incorrecto";
+    return `<div class="regla ${r.activo && !nd ? "on" : "apagada"} ${nd ? "no-disponible" : ""}" data-tipo="${t}">
+      <label class="regla-cab"><input type="checkbox" data-k="activo" ${r.activo && !nd ? "checked" : ""} ${nd ? "disabled" : ""}
+        onchange="this.closest('.regla').classList.toggle('on', this.checked); this.closest('.regla').classList.toggle('apagada', !this.checked); resumenAvisos()">
+        <span><b>${titulo}</b> <span class="muted">— ${desc}</span></span></label>
+      <div class="regla-cuerpo">
+        <select data-k="siempre" onchange="this.closest('.regla').querySelector('.franja').classList.toggle('oculto', this.value === '1')">
+          <option value="1" ${r.siempre ? "selected" : ""}>A cualquier hora</option><option value="0" ${r.siempre ? "" : "selected"}>Solo en una franja</option></select>
+        <span class="franja ${r.siempre ? "oculto" : ""}" style="display:inline-flex; gap:8px; align-items:center; flex-wrap:wrap">
+          de <input type="time" data-k="desde" value="${esc(r.desde || "00:00")}"> a <input type="time" data-k="hasta" value="${esc(r.hasta || "07:00")}">
+          <span class="dias">${LETRAS.map((l, i) => `<label class="dia" title="${DIAS[i]}"><input type="checkbox" data-dia="${i}" ${(r.dias || [0,1,2,3,4,5,6]).includes(i) ? "checked" : ""}>${l}</label>`).join("")}</span>
+        </span>
+        ${t === "incorrecto" || t === "ataque" ? `<span>a partir de <input type="number" min="1" max="10" data-k="minimo" value="${r.minimo || (t === "ataque" ? 5 : 2)}"> intentos seguidos (10 min)</span>` : ""}
+        ${t === "abierta" ? `<span>avisar si sigue abierta <input type="number" min="1" max="240" data-k="minutos" value="${r.minutos || 5}"> min</span>` : ""}
+        ${t === "movimiento" && !nd ? `<span class="muted peq" style="flex-basis:100%">Cámaras que avisan: ${esc(camsCuenta().filter(d => d.movimiento).map(d => d.nombre).join(", ") || "ninguna")} · se eligen en Ajustes → Cámara Eufy</span>` : ""}
+        ${camsCuenta().length ? `<label class="dia" style="width:auto; padding:0 10px"><input type="checkbox" data-k="clip" ${(r.clip ?? clipDef) ? "checked" : ""}>🎥 con clip</label>` : ""}
+      </div>${nd ? '<div class="ayuda">Disponible cuando la cámara esté conectada y asignada a esta cuenta.</div>' : ""}</div>`;
+  }).join("");
+  const d = a.destino || {};
+  ponerPor("al_por", d.por || ["whatsapp"]); $("al_principal").checked = d.wa_principal !== false;
+  $("al_tel").value = ""; $("al_tel").placeholder = d.telefono ? `Actual: ${d.telefono} (vacío = no cambiar)` : "+34600111222";
+  $("al_correo").value = d.correo || "";
+  mostrarCanalAvisos(); resumenAvisos();
+}
+function mostrarCanalAvisos() {
+  const por = porDe("al_por");
+  $("alTelBloque").classList.toggle("oculto", !por.includes("whatsapp"));
+  $("alCorreoBloque").classList.toggle("oculto", !por.includes("correo"));
+  $("alTgBloque").classList.toggle("oculto", !por.includes("telegram"));
+  $("al_tel").classList.toggle("oculto", $("al_principal").checked);
+}
+function resumenAvisos() {
+  const n = document.querySelectorAll("#reglasAvisos .regla[data-tipo].on").length;
+  $("avisosResumen").textContent = n ? `${n} activo${n === 1 ? "" : "s"}` : "Desactivados";
+}
+function datosAvisos() {
+  const reglas = {};
+  document.querySelectorAll("#reglasAvisos .regla[data-tipo]").forEach(el => {
+    const q = (k) => el.querySelector(`[data-k="${k}"]`);
+    reglas[el.dataset.tipo] = {activo: q("activo").checked, siempre: q("siempre").value === "1",
+      desde: q("desde").value, hasta: q("hasta").value, minimo: q("minimo") ? +q("minimo").value : 1,
+      dias: [...el.querySelectorAll("[data-dia]")].filter(x => x.checked).map(x => +x.dataset.dia)};
+    if (q("clip")) reglas[el.dataset.tipo].clip = q("clip").checked;
+    if (q("minutos")) reglas[el.dataset.tipo].minutos = +q("minutos").value;
+  });
+  return {reglas, destino: {por: porDe("al_por"), wa_principal: $("al_principal").checked, telefono: $("al_tel").value, correo: $("al_correo").value}};
+}
+function probarAvisoPuerta(b) {
+  conBoton(b, async () => {
+    await api("POST", "/api/config", datosAjustes());
+    const r = (await api("POST", "/api/alertas/probar", {tipo: "apertura"})).resultado;
+    aviso("Aviso de prueba enviado a " + r.enviado_a.join(", ")); await cargarAjustes();
+  });
+}
+
+// ---------- telegram
+let TG_DESTINO = null;
+async function abrirTelegram(destino) {
+  TG_DESTINO = destino;
+  const u = destino === "_avisos" ? null : USUARIOS.find(x => x.id === destino);
+  const vinculado = destino === "_avisos" ? CONFIG.telegram_avisos_yo : u?.telegram;
+  try {
+    const r = (await api("POST", "/api/telegram/enlace", {destino})).resultado;
+    $("tgEnlace").value = r.enlace; $("tgAbrir").href = r.enlace;
+  } catch (e) { return aviso("⚠️ " + e.message); }
+  $("tgTitulo").textContent = u ? `Telegram de ${u.nombre}` : "Tu Telegram para los avisos";
+  $("tgTexto").textContent = (vinculado ? "Ya está conectado ✓. Si cambia de móvil o de cuenta, que vuelva a pulsar este enlace. " : "")
+    + (u ? `Pásale este enlace a ${u.nombre}. Al abrirlo en Telegram y pulsar «Iniciar», quedará conectado y recibirá ahí sus códigos.`
+         : "Abre este enlace en el Telegram donde quieras recibir los avisos y pulsa «Iniciar».");
+  $("tgDesvincular").classList.toggle("oculto", !vinculado);
+  const wa = $("tgPorWhatsapp");
+  wa.classList.toggle("oculto", !u);
+  if (u) wa.href = "#";
+  wa.onclick = u ? (async (ev) => { ev.preventDefault();
+    const r = (await api("POST", `/api/revelar/${u.id}`, {})).resultado;
+    window.open(`https://wa.me/${r.telefono.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola ${u.nombre}, a partir de ahora los códigos de la puerta te llegarán por Telegram. Pulsa este enlace y luego «Iniciar»: ${$("tgEnlace").value}`)}`, "_blank", "noopener"); }) : null;
+  $("dlgTelegram").showModal();
+}
+function copiarEnlaceTg() {
+  const i = $("tgEnlace"); i.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).then(() => aviso("Enlace copiado"), () => { document.execCommand("copy"); aviso("Enlace copiado"); });
+}
+async function quitarTgAviso(usuario) {
+  if (!await confirmar(`${usuario} dejará de recibir los avisos por Telegram.`, {titulo: "Quitar de los avisos", boton: "Quitar", peligro: true})) return;
+  await conBoton(null, async () => { await api("POST", "/api/telegram/desvincular", {destino: "_avisos", usuario}); aviso("Quitado"); cargarAjustes(); });
+}
+async function desvincularTg(b) {
+  if (!await confirmar("Dejará de recibir mensajes por Telegram hasta que vuelva a pulsar un enlace.", {titulo: "Desvincular Telegram", boton: "Desvincular", peligro: true})) return;
+  await conBoton(b, async () => { await api("POST", "/api/telegram/desvincular", {destino: TG_DESTINO}); $("dlgTelegram").close(); aviso("Telegram desvinculado"); cargarEstado(); cargarAjustes(); });
+}
+function pintarTgAvisos() {
+  const t = CONFIG.telegram || {};
+  document.querySelectorAll(".tg-avisos").forEach(el => {
+    const lista = CONFIG.telegram_avisos_lista || [], admin = YO?.rol === "admin";
+    el.innerHTML = !t.configurado
+      ? '<div class="ayuda">⚠️ El administrador tiene que configurar el bot de Telegram (Ajustes → Telegram).</div>'
+      : `<div class="tg-estado" style="flex-wrap:wrap">${lista.length ? lista.map(x => `<span class="chip on" title="${esc(x.nombre)}">${ico("telegram")} ${esc(x.usuario)}${x.yo ? " (tú)" : ""}
+            ${x.yo || admin ? `<a href="#" style="margin-left:4px" title="Quitar" aria-label="Quitar a ${esc(x.usuario)}" onclick="quitarTgAviso('${esc(x.usuario)}'); return false">✕</a>` : ""}</span>`).join("")
+            : '<span class="chip aviso">Nadie vinculado</span>'}
+         <button type="button" onclick="abrirTelegram('_avisos')">${ico("telegram")}${CONFIG.telegram_avisos_yo ? "Volver a vincular el mío" : "Vincular mi Telegram"}</button></div>
+         <div class="ayuda">Cada persona que entra al panel vincula su propio Telegram y todos reciben los avisos.</div>`;
+  });
+  if ($("tgBotChip")) {
+    $("tgBotChip").textContent = t.configurado ? (t.bot ? "@" + t.bot : "Configurado") : "Sin configurar";
+    $("tgBotChip").className = "chip" + (t.configurado ? " on" : "");
+    $("tg_token").placeholder = t.configurado ? "Guardado en la bóveda ✓ (vacío = no cambiar)" : "123456789:AA…";
+    $("tgQuitar").classList.toggle("oculto", !t.configurado);
+  }
+}
+async function guardarTelegram(ev) {
+  ev.preventDefault();
+  if (!$("tg_token").value.trim()) return aviso("Pega el token del bot");
+  await conBoton(ev.submitter, async () => {
+    const r = (await api("POST", "/api/admin/telegram", {token: $("tg_token").value})).resultado;
+    $("tg_token").value = ""; aviso("Bot conectado: @" + r.bot); await cargarAjustes();
+  });
+}
+async function quitarTelegram(b) {
+  if (!await confirmar("Se borrará el token del bot. Nadie recibirá mensajes por Telegram hasta que pongas otro.", {titulo: "Quitar bot de Telegram", boton: "Quitar", peligro: true})) return;
+  await conBoton(b, async () => { await api("POST", "/api/admin/telegram", {borrar: true}); aviso("Bot quitado"); await cargarAjustes(); });
+}
+
+// ---------- puerta: estado y acciones
+async function cargarPuerta(b) {
+  await conBoton(b, async () => {
+    let p;
+    try { p = (await api("GET", "/api/cerradura")).resultado; }
+    catch (e) { $("puCerrojo").textContent = "sin datos"; $("puCerrojo").className = "chip"; return; }
+    $("puNombre").textContent = p.nombre || "Puerta";
+    $("puCerrojo").textContent = (p.cerrojo === 1 ? "🔒 " : p.cerrojo === 254 ? "⚠️ " : "🔓 ") + p.cerrojo_texto;
+    $("puCerrojo").className = "chip" + (p.cerrojo === 1 ? " on" : p.cerrojo === 254 ? " mal" : " aviso");
+    $("puSensor").classList.toggle("oculto", !p.sensor);
+    $("puSensor").textContent = "Puerta " + p.puerta_texto;
+    $("puSensor").className = "chip" + (p.puerta === 2 ? " on" : " aviso") + (p.sensor ? "" : " oculto");
+  });
+}
+async function accionPuerta(que, b) {
+  const textos = {abrir: ["Abrir la puerta", "Se desbloqueará y se soltará el pestillo para que la puerta se pueda empujar.", "Abrir"],
+                  desbloquear: ["Desbloquear", "Se quitará el cerrojo (la puerta quedará cerrada solo con el pestillo).", "Desbloquear"],
+                  bloquear: ["Bloquear", "Se echará el cerrojo.", "Bloquear"]}[que];
+  if (!await confirmar(textos[1], {titulo: textos[0], boton: textos[2], peligro: que !== "bloquear"})) return;
+  await conBoton(b, async () => {
+    await api("POST", "/api/cerradura/accion", {accion: que});
+    aviso("Orden enviada a la cerradura"); setTimeout(() => cargarPuerta(), 6000); setTimeout(() => cargarPuerta(), 15000);
+  });
+}
+
+// ---------- cámara
+let CAMARA = null, CAM_CUENTAS = [];
+async function cargarCamara(b, silencioso) {
+  try { CAMARA = (await api("GET", "/api/camara")).resultado; }
+  catch (e) { CAMARA = null; if (!silencioso) aviso("⚠️ " + e.message); }
+  pintarCamara();
+  if (silencioso && CONFIG?.alertas) pintarReglas();
+}
+let DIRECTO = null; const CASAS_ABIERTAS = new Set();
+function pintarDirecto() {
+  const ds = (CAMARA?.dispositivos || []).filter(d => d.cuenta !== CAMARA.sin_casa), caja = $("camDirecto");
+  if (!ds.length) { caja.innerHTML = `<div class="vacio">${CAMARA?.sesion ? "No hay cámaras en esta casa." : "La cámara no está conectada."}</div>`; return; }
+  const nombres = Object.fromEntries((YO.cuentas || []).map(c => [c.id, c.nombre]));
+  const casas = {};
+  ds.forEach(d => (casas[d.cuenta] = casas[d.cuenta] || []).push(d));
+  const orden = Object.keys(casas).sort((a, b) => (a === YO.cuenta ? -1 : b === YO.cuenta ? 1 : (nombres[a] || a).localeCompare(nombres[b] || b)));
+  const tarjetas = c => `<div class="eventos-cam">${casas[c].map(d => `<button class="ev-cam directo" id="dir-${esc(d.serial)}" onclick="verDirecto('${esc(d.serial)}')">
+      <div class="foto"><img loading="lazy" src="${esc(conCsrf("/api/camara/foto/" + d.serial))}" alt="" onerror="this.remove()"><span class="play">▶ directo</span></div>
+      <div class="pie-ev"><b>${esc(d.nombre)}</b>${d.predeterminada ? ' <span class="chip on">⭐</span>' : ""}</div></button>`).join("")}</div>`;
+  const propia = casas[YO.cuenta] ? `<div class="casa-cam">${tarjetas(YO.cuenta)}</div>` : '<div class="vacio">Esta casa no tiene cámaras.</div>';
+  const otras = orden.filter(c => c !== YO.cuenta);
+  caja.innerHTML = propia + (otras.length ? otras.map(c => `<details class="casa-cam otra-casa" ${CASAS_ABIERTAS.has(c) ? "open" : ""} ontoggle="this.open ? CASAS_ABIERTAS.add('${esc(c)}') : CASAS_ABIERTAS.delete('${esc(c)}')">
+      <summary><b>${esc(nombres[c] || c)}</b> <span class="muted peq">· ${casas[c].length} cámara${casas[c].length === 1 ? "" : "s"}</span></summary>${tarjetas(c)}</details>`).join("") : "");
+}
+function pararDirecto() {
+  if (!DIRECTO) return;
+  const el = $("dir-" + DIRECTO);
+  if (el) { const img = el.querySelector("img.vivo-img"); if (img) img.src = ""; }
+  DIRECTO = null; pintarDirecto();
+}
+function errorDirecto(img, sn) {
+  if (DIRECTO !== sn) return;
+  if (!img.dataset.reintento) {  // un reintento automático (a veces la cámara tarda en empezar a emitir)
+    img.dataset.reintento = "1";
+    setTimeout(() => { if (DIRECTO === sn) img.src = conCsrf("/api/camara/directo/" + encodeURIComponent(sn) + "?t=" + Date.now()); }, 2500);
+    return;
+  }
+  aviso("⚠️ No se pudo abrir el directo"); pararDirecto();
+}
+function verDirecto(sn) {
+  if (DIRECTO === sn) return pararDirecto();
+  pararDirecto();
+  DIRECTO = sn;
+  const el = $("dir-" + sn); if (!el) return;
+  el.classList.add("vivo");
+  el.querySelector(".foto").innerHTML = `<img class="vivo-img" alt="Directo" src="${esc(conCsrf("/api/camara/directo/" + encodeURIComponent(sn) + "?t=" + Date.now()))}"
+     onerror="errorDirecto(this, '${esc(sn)}')"><span class="vivo-chip">● EN DIRECTO</span><span class="play">■ parar</span>`;
+  el.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+function conCsrf(u) { return u + (u.includes("?") ? "&" : "?") + "csrf=" + encodeURIComponent(YO?.csrf || ""); }
+function urlCam(nombre) { return conCsrf("/api/camara/archivo/" + encodeURIComponent(nombre)); }
+function pintarCamara() {
+  const c = CAMARA, chip = $("camChip");
+  const hay = camsCuenta().length;
+  chip.textContent = !c ? "Sin datos" : !c.sesion ? "Desconectada" : hay ? `Conectada · ${hay} cámara${hay === 1 ? "" : "s"}` : "Sin cámara asignada";
+  chip.className = "chip" + (c?.sesion && hay ? " on" : " aviso");
+  $("camProbar").classList.toggle("oculto", !(c?.sesion && hay));
+  if (!DIRECTO) pintarDirecto();
+  const ev = c?.eventos || [];
+  $("camEventos").innerHTML = ev.length ? ev.map(e => `<button class="ev-cam" onclick="abrirEvento('${esc(e.id)}')">
+      <div class="foto">${e.foto ? `<img loading="lazy" src="${urlCam(e.foto)}" alt="">` : ico("camara")}${e.clip ? '<span class="play">▶ clip</span>' : ""}</div>
+      <div class="pie-ev"><b>${esc(e.tipo)}</b><br><span class="muted">${esc(fecha(e.hora))}${e.camara ? " · " + esc(e.camara) : ""}</span></div></button>`).join("")
+    : `<div class="vacio">${hay ? "Todavía no hay fotos ni clips." : "No hay ninguna cámara conectada a esta cuenta."}</div>`;
+}
+function abrirEvento(id) {
+  const e = (CAMARA?.eventos || []).find(x => x.id === id);
+  if (!e) return aviso("Ese evento ya no está (se borran a los 30 días).");
+  $("evTitulo").textContent = e.tipo;
+  $("evTexto").textContent = fecha(e.hora, true) + (e.camara ? " · " + e.camara : "");
+  $("evMedia").innerHTML = (e.clip ? `<video controls playsinline autoplay muted src="${urlCam(e.clip)}"></video>` : "")
+    + (e.foto ? `<img src="${urlCam(e.foto)}" alt="Foto">` : "")
+    + (!e.clip && !e.foto ? '<div class="vacio">Sin foto ni clip.</div>' : "")
+    + (!e.clip && e.foto && Date.now() - new Date(e.hora) < 120000 ? '<div class="ayuda">El clip tarda unos segundos en estar listo; pulsa Actualizar.</div>' : "");
+  $("dlgEvento").showModal();
+}
+function cerrarEvento() { $("evMedia").innerHTML = ""; $("dlgEvento").close(); if (location.hash.startsWith("#evento=")) history.replaceState(null, "", location.pathname); }
+async function abrirEventoDelEnlace() {
+  const m = location.hash.match(/^#evento=([\w-]+)/);
+  if (!m || !YO?.autenticado) return;
+  irA("camara"); await cargarCamara(null, true); abrirEvento(m[1]);
+}
+function probarCamara(b) {
+  conBoton(b, async () => {
+    const r = (await api("POST", "/api/camara/probar", {})).resultado;
+    aviso("Aviso enviado a " + r.destinos.join(", ") + ". El clip llegará en unos segundos.");
+    setTimeout(() => cargarCamara(null, true), 3000); setTimeout(() => cargarCamara(null, true), 25000);
+  });
+}
+async function cargarEufy() {
+  try {
+    const [c, cu] = await Promise.all([api("GET", "/api/camara"), api("GET", "/api/admin/cuentas")]);
+    CAMARA = c.resultado; CAM_CUENTAS = cu.resultado.cuentas;
+  } catch (e) { return; }
+  pintarEufy(); pintarCamara();
+}
+function pintarEufy() {
+  const c = CAMARA || {}, chip = $("eufyChip");
+  chip.textContent = !c.credenciales ? "Sin configurar" : c.sesion ? "Conectada" : c.captcha ? "Falta el captcha" : c.pide_codigo ? "Falta el código" : c.conectado ? "Iniciando sesión…" : "Arrancando…";
+  chip.className = "chip" + (c.sesion ? " on" : c.credenciales ? " aviso" : "");
+  $("eufy_usuario").value = c.usuario || $("eufy_usuario").value;
+  $("eufy_password").placeholder = c.credenciales ? "Guardada en la bóveda ✓ (vacío = no cambiar)" : "";
+  $("eufyQuitar").classList.toggle("oculto", !c.credenciales);
+  $("eufyCaptcha").classList.toggle("oculto", !c.captcha);
+  if (c.captcha) $("eufyCaptchaImg").src = String(c.captcha.imagen || "").startsWith("data:") ? c.captcha.imagen : "data:image/png;base64," + (c.captcha.imagen || "");
+  $("eufyCodigo").classList.toggle("oculto", !c.pide_codigo);
+  $("eufyError").textContent = c.error || ""; $("eufyError").classList.toggle("oculto", !c.error);
+  const d = c.dispositivos || [];
+  $("eufyDisp").innerHTML = !c.sesion ? "" : !d.length ? '<div class="ayuda">Conectada, pero no se ve ninguna cámara. Comprueba que la compartiste con la cuenta secundaria.</div>'
+    : '<p class="peq" style="margin:12px 0 4px"><b>Cámaras</b></p><div class="ayuda" style="margin:0 0 6px">⭐ <b>Predeterminada</b>: la que pone la foto y el clip en los avisos de la puerta (una por casa). 📷 <b>Movimiento</b>: esa cámara te avisa cuando detecta movimiento o timbre.</div>'
+      + d.map(x => `<div class="cam-disp">
+        <span>${ico("camara")} <b>${esc(x.nombre)}</b> <span class="muted peq">${esc(x.modelo || "")}${x.bateria != null ? " · 🔋 " + x.bateria + "%" : ""}</span></span>
+        <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <label class="dia" style="width:auto; padding:0 10px" title="Foto y clip de los avisos de la puerta"><input type="radio" name="campred-${esc(x.cuenta)}" ${x.predeterminada ? "checked" : ""} onchange="configCamara('${esc(x.serial)}', {predeterminada: true})">⭐ Predeterminada</label>
+          <label class="dia" style="width:auto; padding:0 10px" title="Avisar de movimiento o timbre"><input type="checkbox" ${x.movimiento ? "checked" : ""} onchange="configCamara('${esc(x.serial)}', {movimiento: this.checked})">📷 Movimiento</label>
+          <select onchange="configCamara('${esc(x.serial)}', {cuenta: this.value})">${CAM_CUENTAS.map(k => `<option value="${esc(k.id)}" ${k.id === x.cuenta ? "selected" : ""}>${esc(k.nombre)}</option>`).join("")}<option value="${esc(c.sin_casa)}" ${x.cuenta === c.sin_casa ? "selected" : ""}>Sin casa (oculta)</option></select>
+        </span></div>`).join("");
+  clearTimeout(pintarEufy._t);
+  if (c.credenciales && !c.sesion && !$("tab-ajustes").classList.contains("oculto")) pintarEufy._t = setTimeout(cargarEufy, 4000);
+}
+async function guardarEufy(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    CAMARA = (await api("POST", "/api/admin/camara", {usuario: $("eufy_usuario").value, password: $("eufy_password").value})).resultado;
+    $("eufy_password").value = ""; aviso("Guardado. Conectando con Eufy (tarda hasta un minuto)…");
+    setTimeout(cargarEufy, 3000);
+  });
+}
+async function quitarEufy(b) {
+  if (!await confirmar("Se borrarán el usuario y la contraseña de Eufy y dejarán de llegar avisos de la cámara.", {titulo: "Desconectar cámara", boton: "Desconectar", peligro: true})) return;
+  await conBoton(b, async () => { await api("POST", "/api/admin/camara", {borrar: true}); aviso("Cámara desconectada"); cargarEufy(); });
+}
+function enviarEufy(b, que, campo) {
+  conBoton(b, async () => { await api("POST", "/api/admin/camara/" + que, {codigo: $(campo).value}); $(campo).value = ""; aviso("Enviado"); setTimeout(cargarEufy, 2500); });
+}
+function configCamara(serial, cambios) {
+  conBoton(null, async () => { await api("POST", "/api/admin/camara/asignar", {serial, ...cambios}); aviso("Guardado"); await cargarEufy(); cargarCamara(null, true); });
+}
+
+// ---------- batería
+let BATERIA = null;
+async function cargarBateria(forzar) {
+  try {
+    BATERIA = (await api("GET", "/api/bateria" + (forzar ? "?actualizar=1" : ""))).resultado;
+  } catch (e) { BATERIA = {datos: null, error: e.message, aviso: {}}; }
+  pintarBateria();
+  if (forzar) aviso(BATERIA.datos ? "Batería leída" : "No se pudo leer la batería");
+}
+function pintarBateria() {
+  const b = BATERIA || {}, d = b.datos, av = b.aviso || {}, caja = $("rBateria");
+  caja.classList.remove("baja", "critica");
+  const extra = [];
+  if (d?.teclado_critica) extra.push("pilas del teclado agotándose");
+  if (d?.sensor_critica) extra.push("pila del sensor agotándose");
+  if (!d) {
+    $("rBatN").textContent = "–"; $("rBatBarra").style.width = "0";
+    $("rBatT").innerHTML = `${ico("bateria")} ${b.error ? "Batería: sin datos" : "Batería (configura la cerradura)"}`;
+  } else {
+    const c = d.carga, umbral = av.umbral ?? 25;
+    $("rBatN").textContent = c == null ? (d.critica ? "Baja" : "OK") : c + " %";
+    $("rBatBarra").style.width = (c == null ? (d.critica ? 10 : 100) : Math.max(3, c)) + "%";
+    if (d.critica || extra.length || (c != null && c <= Math.min(15, umbral))) caja.classList.add("critica");
+    else if (c != null && c <= umbral) caja.classList.add("baja");
+    $("rBatT").innerHTML = `${ico("bateria")} Batería${d.cargando ? " · cargando ⚡" : ""}${extra.length ? ` · <b>${esc(extra.join(", "))}</b>` : ""}`;
+  }
+  caja.title = d ? `Leída: ${fecha(d.leido)}` + (av.activo ? ` · aviso por correo al ${av.umbral} %` : " · sin aviso por correo") : (b.error || "");
+  if ($("bat_umbral")) {
+    $("batEstado").textContent = d ? `Ahora: ${d.carga ?? "?"} %${extra.length ? " · " + extra.join(", ") : ""}` : "";
+    $("batSmtpAyuda").textContent = b.smtp_listo ? "Separa varios correos con comas." : "⚠️ Falta que el administrador configure el servidor de correo.";
+    $("batError").textContent = b.ultimo_error_correo ? "Último aviso fallido: " + b.ultimo_error_correo : "";
+    $("batError").classList.toggle("oculto", !b.ultimo_error_correo);
+  }
+}
+function porDe(id) { return [...document.querySelectorAll(`#${id} [data-c]`)].filter(x => x.checked).map(x => x.dataset.c); }
+function ponerPor(id, por) { document.querySelectorAll(`#${id} [data-c]`).forEach(x => x.checked = (por || []).includes(x.dataset.c)); }
+function mostrarCanalBateria() {
+  const por = porDe("bat_por");
+  $("batCorreoBloque").classList.toggle("oculto", !por.includes("correo"));
+  $("batTelBloque").classList.toggle("oculto", !por.includes("whatsapp"));
+  $("batTgBloque").classList.toggle("oculto", !por.includes("telegram"));
+  $("bat_tel").classList.toggle("oculto", $("bat_principal").checked);
+  $("batTelAyuda").textContent = $("bat_principal").checked
+    ? "Te llegará al chat contigo mismo («Tú») del número vinculado en el servidor."
+    : "Con prefijo. Se envía desde el WhatsApp del servidor, que tiene que estar vinculado.";
+}
+function probarCorreoBateria(b) {
+  conBoton(b, async () => {
+    await api("POST", "/api/config", datosAjustes());
+    const r = (await api("POST", "/api/bateria/probar", {})).resultado;
+    aviso("Aviso de prueba enviado a " + r.enviado_a.join(", "));
+    await cargarAjustes();
+  });
+}
+async function cargarSmtp() {
+  if (YO?.rol !== "admin") return;
+  const s = (await api("GET", "/api/admin/correo")).resultado;
+  $("smtp_servidor").value = s.servidor || ""; $("smtp_puerto").value = s.puerto || 587; $("smtp_seguridad").value = s.seguridad || "starttls";
+  $("smtp_usuario").value = s.usuario || ""; $("smtp_remitente").value = s.remitente || "";
+  $("smtp_password").value = ""; $("smtp_password").placeholder = s.password_puesta ? "Guardada en la bóveda ✓ (vacío = no cambiar)" : "";
+  if (!$("smtp_prueba").value) $("smtp_prueba").value = $("bat_correo").value.split(",")[0].trim();
+}
+function datosSmtp() {
+  return {servidor: $("smtp_servidor").value, puerto: $("smtp_puerto").value, seguridad: $("smtp_seguridad").value,
+    usuario: $("smtp_usuario").value, password: $("smtp_password").value, remitente: $("smtp_remitente").value};
+}
+async function guardarSmtp(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => { await api("POST", "/api/admin/correo", datosSmtp()); aviso("Servidor de correo guardado"); await cargarSmtp(); cargarBateria(); });
+}
+function probarSmtp(b) {
+  conBoton(b, async () => {
+    await api("POST", "/api/admin/correo", datosSmtp());
+    const r = (await api("POST", "/api/admin/correo/probar", {correo: $("smtp_prueba").value})).resultado;
+    aviso("Correo de prueba enviado a " + r.enviado_a.join(", ")); await cargarSmtp(); cargarBateria();
+  });
+}
+
+async function cargarAjustes() {
+  CONFIG = (await api("GET", "/api/config")).resultado;
+  $("solo_camara").checked = !!CONFIG.solo_camara; $("nukiCampos").classList.toggle("oculto", !!CONFIG.solo_camara);
+  aplicarSoloCamara();
+  $("token").value = ""; $("token").placeholder = CONFIG.nuki.token_puesto ? "Guardado en la bóveda ✓ (vacío = no cambiar)" : "Pega aquí el token";
+  $("smartlock_id").value = CONFIG.nuki.smartlock_id || "";
+  $("dias_validez").value = CONFIG.dias_validez || 7;
+  $("vigilar").value = CONFIG.vigilar_bajas_dias ?? 30;
+  const r = CONFIG.rotacion || {activa: true, dia: 0, hora: 9, minuto: 0};
+  $("rot_activa").checked = !!r.activa; $("rot_dia").value = r.dia; $("rot_hora").value = r.hora; $("rot_min").value = r.minuto;
+  $("proveedor").value = CONFIG.whatsapp.proveedor || "enlace";
+  $("twilio_sid").value = CONFIG.whatsapp.twilio.account_sid || ""; $("twilio_numero").value = CONFIG.whatsapp.twilio.numero_origen || "";
+  $("twilio_token").value = ""; $("twilio_token").placeholder = CONFIG.whatsapp.twilio.auth_token_puesto ? "Guardado ✓" : "";
+  $("mensaje").value = CONFIG.mensaje || ""; $("mensaje_fijo").value = CONFIG.mensaje_fijo || MSJ_FIJO; $("mensaje_invitado").value = CONFIG.mensaje_invitado || MSJ_INV;
+  const av = CONFIG.aviso_bateria || {activo: false, umbral: 25, correo: ""};
+  $("bat_activo").checked = !!av.activo; $("bat_umbral").value = av.umbral ?? 25; $("bat_correo").value = av.correo || "";
+  ponerPor("bat_por", av.por || ["correo"]); $("bat_tel").value = ""; $("bat_principal").checked = !!av.wa_principal;
+  $("bat_tel").placeholder = av.telefono ? `Actual: ${av.telefono} (vacío = no cambiar)` : "+34600111222";
+  mostrarCanalBateria();
+  pintarReglas();
+  pintarTgAvisos();
+  mostrarProveedor();
+  pintarBateria();
+  cargarSmtp().catch(() => {});
+}
+function soloCamara() { return !!CONFIG?.solo_camara; }
+function aplicarSoloCamara() {
+  const solo = soloCamara();
+  document.querySelectorAll('nav.pestanas button[data-tab="personas"], nav.pestanas button[data-tab="entradas"]').forEach(b => b.classList.toggle("oculto", solo));
+  ["cardRotacion", "cardBateria", "cardSecciones", "cardMensajes"].forEach(id => $(id) && $(id).classList.toggle("oculto", solo));
+  const h = document.querySelector("#cardAvisos h2"); if (h) h.textContent = solo ? "Avisos de la cámara" : "Avisos de la puerta";
+  if (!$("tab-ajustes").classList.contains("oculto")) verGrupo(GRUPO_AJ);
+}
+function mostrarProveedor() { $("twilioCampos").classList.toggle("oculto", $("proveedor").value !== "twilio"); }
+function datosAjustes() {
+  return { solo_camara: $("solo_camara").checked, token: $("token").value, smartlock_id: $("smartlock_id").value, dias_validez: $("dias_validez").value, vigilar_bajas_dias: $("vigilar").value, proveedor: $("proveedor").value,
+    mensaje: $("mensaje").value, mensaje_fijo: $("mensaje_fijo").value, mensaje_invitado: $("mensaje_invitado").value,
+    twilio_sid: $("twilio_sid").value, twilio_token: $("twilio_token").value, twilio_numero: $("twilio_numero").value,
+    alertas: datosAvisos(),
+    aviso_bateria: {activo: $("bat_activo").checked, umbral: +$("bat_umbral").value || 25, por: porDe("bat_por"),
+      correo: $("bat_correo").value, telefono: $("bat_tel").value, wa_principal: $("bat_principal").checked},
+    rotacion: {activa: $("rot_activa").checked, dia: +$("rot_dia").value, hora: +$("rot_hora").value, minuto: +$("rot_min").value} };
+}
+async function guardarAjustes(ev) {
+  ev.preventDefault();
+  await conBoton(ev.submitter, async () => {
+    const antes = soloCamara();
+    await api("POST", "/api/config", datosAjustes()); aviso("Ajustes guardados"); await cargarAjustes(); cargarEstado();
+    if (antes !== soloCamara()) { pintarReglas(); irA(soloCamara() ? "camara" : "personas"); }
+  });
+}
+function buscarCerraduras(b) {
+  conBoton(b, async () => {
+    if ($("token").value) await api("POST", "/api/config", {...datosAjustes(), smartlock_id: /^\d*$/.test($("smartlock_id").value) ? $("smartlock_id").value : ""});
+    const r = (await api("GET", "/api/cerraduras")).resultado, s = $("listaCerraduras");
+    s.innerHTML = '<option value="">Elige tu cerradura…</option>' + r.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)} (${esc(c.id)})</option>`).join("");
+    s.classList.remove("oculto"); if (r.length === 1) { s.value = r[0].id; $("smartlock_id").value = r[0].id; }
+  });
+}
+
+try { $("simular").checked = sessionStorage.getItem("simular") === "1"; } catch (e) {}
+$("simular").addEventListener("change", () => { try { sessionStorage.setItem("simular", simulando() ? "1" : "0"); } catch (e) {} });
+pintarTema();
+prepararPlegables();
+// si un campo no es válido y está en una tarjeta cerrada, abrirla para que se vea el error
+document.addEventListener("invalid", e => { const c = e.target.closest?.(".card.plegable"); if (c && !c.classList.contains("abierta")) abrirTarjeta(c.id, true); }, true);
+inicio();
+</script>
+</body>
+</html>

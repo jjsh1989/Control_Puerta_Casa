@@ -1,0 +1,115 @@
+# Códigos de la puerta: panel + WhatsApp (WAHA) + control limitado de Docker.
+# Se arranca con:  docker compose up -d --build
+# Los datos quedan en ./datos y la clave maestra de la bóveda en ./secretos (no la pierdas).
+
+name: puerta
+
+services:
+  panel:
+    build: .
+    container_name: puerta-panel
+    restart: unless-stopped
+    ports:
+      # Solo accesible desde el propio servidor; desde fuera se entra con Tailscale (tailscale serve)
+      - "127.0.0.1:${PANEL_PUERTO_HOST:-8790}:8765"
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      PANEL_HOSTS: ${PANEL_HOSTS:-}
+      WAHA_URL: http://waha:3000
+      WAHA_API_KEY: ${WAHA_API_KEY:?Falta WAHA_API_KEY en .env (ejecuta ./instalar.sh)}
+      WAHA_CONTENEDOR: puerta-waha
+      DOCKER_PROXY: http://docker-proxy:2375
+      CLAVE_MAESTRA_ARCHIVO: /run/secrets/clave_maestra
+      EUFY_URL: ws://eufy:3000
+      EUFY_CONTENEDOR: puerta-eufy
+      PANEL_URL_PUBLICA: ${PANEL_URL_PUBLICA:-}
+    volumes:
+      - ./datos:/app/datos
+    secrets:
+      - clave_maestra
+    depends_on:
+      - waha
+      - docker-proxy
+    networks: [interna]
+    mem_limit: 320m
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp"]
+
+  waha:
+    # Motor NOWEB: no lleva navegador dentro, consume muy poca memoria
+    image: ${WAHA_IMAGEN:-devlikeapro/waha:noweb}
+    container_name: puerta-waha
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_PRINT_QR: "false"
+      WAHA_LOG_LEVEL: warn
+    volumes:
+      - waha-sesiones:/app/.sessions
+    networks: [interna]
+    mem_limit: 512m
+    security_opt: ["no-new-privileges:true"]
+
+  eufy:
+    # Puente con las cámaras Eufy (eufy-security-ws). Espera a que el panel deje el usuario
+    # y la contraseña de la cuenta secundaria de Eufy en ./datos/eufy (Ajustes → Cámara Eufy).
+    image: ${EUFY_IMAGEN:-bropat/eufy-security-ws:3.1.0}
+    container_name: puerta-eufy
+    restart: unless-stopped
+    entrypoint: ["bash", "-c", "until [ -s /cred/usuario ] && [ -s /cred/contrasena ]; do sleep 15; done; exec docker-entrypoint.sh /usr/src/app/run.sh"]
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      USERNAME_FILE: /cred/usuario
+      PASSWORD_FILE: /cred/contrasena
+      COUNTRY: ES
+      LANGUAGE: es
+      TRUSTED_DEVICE_NAME: puerta-servidor
+      ACCEPT_INVITATIONS: "true"
+      STATION_IP_ADDRESSES: ${EUFY_IP_CAMARAS:-}
+    volumes:
+      - eufy-datos:/data
+      - ./datos/eufy:/cred:ro
+    networks: [interna]
+    mem_limit: 384m
+    security_opt: ["no-new-privileges:true"]
+
+  docker-proxy:
+    # Da al panel acceso MUY limitado a Docker: ver estado/registro y arrancar/parar/reiniciar.
+    # No permite crear, borrar ni ejecutar nada.
+    # (linuxserver/socket-proxy permite start/stop/restart sin abrir el resto de órdenes POST;
+    #  «exec» está bloqueado expresamente)
+    image: lscr.io/linuxserver/socket-proxy:3.4.7-r0-ls103
+    container_name: puerta-docker-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      POST: 0
+      EXEC: 0
+      LOG_LEVEL: warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs: ["/run"]
+    networks: [interna]
+    mem_limit: 64m
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  interna: {}
+
+volumes:
+  waha-sesiones: {}
+  eufy-datos: {}
+
+secrets:
+  clave_maestra:
+    file: ./secretos/clave_maestra

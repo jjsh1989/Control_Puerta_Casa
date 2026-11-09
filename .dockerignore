@@ -1,0 +1,11 @@
+datos
+secretos
+.env
+*.log
+*.jsonl
+*.pem
+config.json*
+estado.json
+__pycache__
+.claude
+copia-*.tar.gz

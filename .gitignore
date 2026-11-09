@@ -1,0 +1,22 @@
+# NUNCA subir al repositorio: secretos y datos personales
+datos/
+secretos/
+.env
+config.json
+estado.json
+gestion.jsonl
+registro.log
+*.tgz
+*.log
+
+# Cosas generadas
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+certificados_macos.pem
+copia-*.tar.gz
+
+# Restos de la primera versión para Mac (ya no se usan)
+Abrir panel.command
+instalar_semanal.sh
