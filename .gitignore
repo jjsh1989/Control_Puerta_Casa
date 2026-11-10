@@ -20,3 +20,6 @@ copia-*.tar.gz
 # Restos de la primera versión para Mac (ya no se usan)
 Abrir panel.command
 instalar_semanal.sh
+
+# Web del dominio (se publica aparte, no va en el repositorio)
+web/
