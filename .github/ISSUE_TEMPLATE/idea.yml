@@ -1,0 +1,16 @@
+name: 💡 Idea o función nueva
+description: Proponer una mejora
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Qué te gustaría
+      description: Qué quieres poder hacer y para qué te serviría.
+    validations:
+      required: true
+  - type: input
+    id: equipo
+    attributes:
+      label: Tu equipo (si tiene que ver)
+      placeholder: "Nuki Opener, Eufy Video Doorbell…"

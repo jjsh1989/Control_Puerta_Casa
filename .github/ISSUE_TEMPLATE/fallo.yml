@@ -1,0 +1,30 @@
+name: 🐞 Algo no funciona
+description: Avisar de un fallo
+labels: ["fallo"]
+body:
+  - type: markdown
+    attributes:
+      value: "⚠️ Quita antes tus datos: tokens, contraseñas, teléfonos, correos, números de serie y la dirección de tu panel."
+  - type: textarea
+    id: que
+    attributes:
+      label: Qué pasa
+      description: Qué hiciste, qué esperabas y qué pasó.
+    validations:
+      required: true
+  - type: input
+    id: cerradura
+    attributes:
+      label: Cerradura y accesorios
+      placeholder: "Nuki Smart Lock 4.0 + Keypad 2 + bridge"
+  - type: input
+    id: camaras
+    attributes:
+      label: Cámaras (si tiene que ver)
+      placeholder: "Eufy T8410, T8424…"
+  - type: textarea
+    id: registro
+    attributes:
+      label: Registro
+      description: "Salida de `docker compose logs --tail 100 panel` (sin datos personales)."
+      render: text

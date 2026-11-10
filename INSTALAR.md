@@ -46,8 +46,6 @@ El último comando muestra un enlace: ábrelo y autoriza el equipo en tu cuenta 
 
 ## 3. Descargar e instalar
 
-El repositorio es privado: necesitas un *token* de GitHub con permiso de lectura (GitHub → Settings → Developer settings → Personal access tokens), o copiar los archivos a mano con `scp`.
-
 ```bash
 git clone https://github.com/jjsh1989/Control_Puerta_Casa.git /opt/puerta
 cd /opt/puerta

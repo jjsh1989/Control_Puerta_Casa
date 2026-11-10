@@ -3,7 +3,19 @@
 Panel web para gestionar la puerta de casa: **códigos del teclado Nuki**, envío por **WhatsApp o Telegram**, **avisos** y **cámaras Eufy** (fotos, clips y directo).
 Pensado para funcionar 24 h en un servidor doméstico (Proxmox + Docker) y entrar desde el móvil a través de **Tailscale**.
 
-➡️ **Instalación paso a paso: [INSTALAR.md](INSTALAR.md)**
+➡️ **Instalación paso a paso: [INSTALAR.md](INSTALAR.md)** · 🤝 **¿Quieres ayudar? [CONTRIBUIR.md](CONTRIBUIR.md)**
+
+> **Proyecto personal y comunitario.** Nació para una casa concreta y se comparte por si le sirve a alguien. Se agradecen mucho los avisos de fallos, las ideas y las mejoras, pero no hay soporte garantizado.
+>
+> **No es un producto oficial** de Nuki ni de Eufy (Anker), ni está relacionado con ellas. Las marcas son de sus dueños. Usa el puente no oficial [eufy-security-ws](https://github.com/bropat/eufy-security-ws), que puede dejar de funcionar si Eufy cambia algo. Se trata de la puerta de tu casa: **úsalo bajo tu responsabilidad** (ver [LICENSE](LICENSE)).
+
+<details>
+<summary>🇬🇧 English summary</summary>
+
+Self-hosted web panel for your front door: it manages **Nuki Keypad codes** (weekly auto-rotating, temporary, fixed and guest codes, with per-person schedules), sends them via **WhatsApp or Telegram**, sends **alerts** (wrong code, door left open, lock offline, low battery…) and integrates **Eufy cameras** (live view with pan/tilt, snapshots and clips attached to alerts, privacy mode, automations tied to the lock).
+Supports several homes and users, encrypted secrets vault, and is meant to run 24/7 on a home server (Proxmox LXC + Docker) reachable only through **Tailscale**.
+The UI and docs are in Spanish; issues and pull requests in English are welcome too. Not affiliated with Nuki or Eufy/Anker. MIT licensed, no warranty.
+</details>
 
 ## Qué hace
 
@@ -71,6 +83,20 @@ Pensado para funcionar 24 h en un servidor doméstico (Proxmox + Docker) y entra
 
 Nuki **no dice qué número se tecleó** cuando un código es incorrecto. Por eso los códigos viejos se dejan en la cerradura *desactivados* y con nombre («Baja …»): si Nuki registra el intento contra ese código, se sabe de quién era. El teclado admite 100 códigos; con 3 personas semanales y 30 días de vigilancia se usan unos 15.
 
+## Probado con
+
+| Equipo | Modelo |
+|---|---|
+| Cerradura | Nuki Smart Lock 3.0/4.0 con **Keypad** (1.ª generación) y sensor de puerta |
+| Cámaras | Eufy de interior con giro (modelo T8410) y Eufy de exterior con foco (modelo T8424) |
+| Servidor | Proxmox 8, contenedor LXC Debian 12 con Docker |
+
+El panel pregunta a cada cerradura y cámara qué admite y solo muestra eso, así que otros modelos deberían funcionar, pero **no están probados**. Si lo usas con otro equipo, cuéntalo en una *issue* (funcione o no) y lo añadimos aquí.
+
+## Colaborar
+
+Toda ayuda es bienvenida: avisar de fallos, proponer ideas, mejorar textos o enviar código. Lee [CONTRIBUIR.md](CONTRIBUIR.md). Si encuentras un **fallo de seguridad**, no abras una *issue* pública: usa *Security → Report a vulnerability* en GitHub.
+
 ## Desde el terminal (dentro del servidor)
 
 ```bash
@@ -78,3 +104,7 @@ docker compose exec panel python nuki_codigos.py --cuenta principal entradas
 docker compose exec panel python nuki_codigos.py --cuenta principal historial
 docker exec -it puerta-panel python panel.py --recuperar USUARIO
 ```
+
+## Licencia
+
+[MIT](LICENSE): puedes usarlo, cambiarlo y compartirlo libremente, sin ninguna garantía.
