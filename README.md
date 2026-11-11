@@ -43,7 +43,13 @@ The UI and docs are in Spanish; issues and pull requests in English are welcome 
 **Avisos** (Telegram, WhatsApp o correo, según el tipo)
 - Código incorrecto, entradas de noche, códigos desactivados, batería baja.
 - **Cerradura sin conexión** (wifi, bridge o pilas) y **puerta abierta más de X minutos** (y aviso cuando se cierra), **cerradura atascada** y **bloqueo**.
-- Con cámara: el aviso lleva **foto y clip** de la **cámara predeterminada** de esa casa.
+- Con cámara: el aviso lleva **foto y clip** de la **cámara predeterminada** de esa casa. En Telegram es un solo mensaje: llega la foto y, cuando está listo, se convierte en el clip.
+- Botones bajo cada aviso de Telegram: **🔕 Silenciar 1 h** esa cámara, **📌 No borrar**, **🚪 Puerta** y **📹 En directo**.
+
+**La puerta desde Telegram** (solo usuarios del panel con su Telegram vinculado; los invitados no)
+- Escribe **/puerta** al bot: estado de la cerradura, puerta y batería, y botones para **cerrar con llave**, **abrir** y abrir el **portal** (si hay Opener).
+- **Abrir pide un PIN** que cada usuario pone en el panel (Ajustes → Avisos → Telegram, con su contraseña). El bot borra el mensaje del PIN, la petición caduca a los 2 minutos y 3 fallos seguidos bloquean 15 minutos. Sin PIN no se puede abrir desde Telegram.
+- Todo queda en el Historial y los demás que reciben avisos se enteran («Fulano ha abierto la puerta desde Telegram»).
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)
 - ⭐ Cámara predeterminada por casa, 📷 avisos por movimiento o timbre, y cada cámara asignada a su casa (o oculta).
@@ -71,6 +77,7 @@ The UI and docs are in Spanish; issues and pull requests in English are welcome 
 | `nuki_extra.py` | Lo que depende de cada cerradura: capacidades, ajustes, accesos, Opener y programaciones |
 | `camara.py` | Cámaras Eufy: eventos, fotos, clips y directo |
 | `telegram.py` | Bot de Telegram (códigos y avisos) |
+| `bot_puerta.py` | La puerta desde Telegram: /puerta, botones de los avisos y PIN para abrir |
 | `waha.py` | WhatsApp con WAHA y control limitado de Docker |
 | `bateria.py` | Batería de la cerradura y correo (SMTP) |
 | `Dockerfile`, `docker-compose.yml`, `instalar.sh`, `.env.ejemplo` | Instalación en el servidor |

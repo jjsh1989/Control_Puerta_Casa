@@ -40,14 +40,16 @@ def _api(metodo, datos=None, archivo=None, timeout=20, tok=None):
     if not tok:
         raise ErrorTelegram("Telegram no está configurado (Ajustes → Telegram, solo administrador).")
     url = f"https://api.telegram.org/bot{tok}/{metodo}"
-    if archivo:  # multipart/form-data
+    if archivo:  # multipart/form-data; `archivo` es una tupla o una lista de tuplas
         limite = uuid.uuid4().hex
         partes = []
         for k, v in (datos or {}).items():
+            if isinstance(v, (dict, list)):
+                v = json.dumps(v)
             partes.append(f'--{limite}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
-        campo, nombre, contenido, tipo = archivo
-        partes.append(f'--{limite}\r\nContent-Disposition: form-data; name="{campo}"; filename="{nombre}"\r\n'
-                      f"Content-Type: {tipo}\r\n\r\n".encode() + contenido + b"\r\n")
+        for campo, nombre, contenido, tipo in (archivo if isinstance(archivo, list) else [archivo]):
+            partes.append(f'--{limite}\r\nContent-Disposition: form-data; name="{campo}"; filename="{nombre}"\r\n'
+                          f"Content-Type: {tipo}\r\n\r\n".encode() + contenido + b"\r\n")
         partes.append(f"--{limite}--\r\n".encode())
         cuerpo = b"".join(partes)
         cab = {"Content-Type": f"multipart/form-data; boundary={limite}"}
@@ -142,12 +144,52 @@ def enviar_a_todos(cfg, funcion, *args, recibos=None):
 
 # ---------------------------------------------------------------- envío
 
-def enviar(chat, texto):
-    return _api("sendMessage", {"chat_id": chat, "text": texto, "disable_web_page_preview": True})
+def enviar(chat, texto, botones=None):
+    d = {"chat_id": chat, "text": texto, "disable_web_page_preview": True}
+    if botones:
+        d["reply_markup"] = {"inline_keyboard": botones}
+    return _api("sendMessage", d)
 
 
-def enviar_foto(chat, contenido, texto=""):
-    return _api("sendPhoto", {"chat_id": chat, "caption": texto[:1000]}, ("photo", "foto.jpg", contenido, "image/jpeg"), timeout=60)
+def enviar_foto(chat, contenido, texto="", botones=None):
+    d = {"chat_id": chat, "caption": texto[:1000]}
+    if botones:
+        d["reply_markup"] = {"inline_keyboard": botones}
+    return _api("sendPhoto", d, ("photo", "foto.jpg", contenido, "image/jpeg"), timeout=60)
+
+
+def editar_texto(chat, mensaje, texto, botones=None):
+    d = {"chat_id": chat, "message_id": mensaje, "text": texto, "disable_web_page_preview": True,
+         "reply_markup": {"inline_keyboard": botones or []}}
+    try:
+        return _api("editMessageText", d)
+    except ErrorTelegram as e:
+        if "not modified" not in str(e):
+            raise
+
+
+def editar_botones(chat, mensaje, botones):
+    try:
+        return _api("editMessageReplyMarkup", {"chat_id": chat, "message_id": mensaje,
+                                               "reply_markup": {"inline_keyboard": botones or []}})
+    except ErrorTelegram as e:
+        if "not modified" not in str(e):
+            raise
+
+
+def responder_boton(ident, texto="", alerta=False):
+    try:
+        _api("answerCallbackQuery", {"callback_query_id": ident, "text": texto[:190], "show_alert": alerta})
+    except ErrorTelegram:
+        pass
+
+
+def borrar_mensaje(chat, mensaje):
+    try:
+        _api("deleteMessage", {"chat_id": chat, "message_id": mensaje})
+        return True
+    except ErrorTelegram:
+        return False
 
 
 def enviar_video(chat, contenido, texto=""):
@@ -155,11 +197,18 @@ def enviar_video(chat, contenido, texto=""):
          ("video", "clip.mp4", contenido, "video/mp4"), timeout=120)
 
 
-def cambiar_a_video(chat, mensaje, contenido, texto=""):
-    """Convierte un mensaje ya enviado (la foto del aviso) en el vídeo del clip, en el mismo mensaje."""
+def cambiar_a_video(chat, mensaje, contenido, texto="", portada=None, botones=None):
+    """Convierte un mensaje ya enviado (la foto del aviso) en el vídeo del clip, en el mismo mensaje.
+    `portada`: JPEG pequeño (≤320 px) que Telegram enseña antes de reproducir."""
     medio = {"type": "video", "media": "attach://clip", "caption": texto[:1000], "supports_streaming": True}
-    return _api("editMessageMedia", {"chat_id": chat, "message_id": mensaje, "media": json.dumps(medio)},
-                ("clip", "clip.mp4", contenido, "video/mp4"), timeout=120)
+    archivos = [("clip", "clip.mp4", contenido, "video/mp4")]
+    if portada:
+        medio["thumbnail"] = "attach://portada"
+        archivos.append(("portada", "portada.jpg", portada, "image/jpeg"))
+    d = {"chat_id": chat, "message_id": mensaje, "media": json.dumps(medio)}
+    if botones:
+        d["reply_markup"] = {"inline_keyboard": botones}
+    return _api("editMessageMedia", d, archivos, timeout=120)
 
 
 # ---------------------------------------------------------------- vinculación
@@ -225,25 +274,50 @@ def bateria_nombre():
         return "tu casa"
 
 
+def _bot_atiende(m, texto, chat):
+    """Órdenes de la puerta (/puerta, el PIN…). Devuelve True si ya se respondió."""
+    try:
+        import bot_puerta
+        return bot_puerta.mensaje(m, texto, chat)
+    except Exception as e:
+        nk.log(f"Telegram: orden: {e}")
+        return False
+
+
 class Escucha(threading.Thread):
-    """Recibe los mensajes que llegan al bot (solo para vincular a las personas)."""
+    """Recibe los mensajes y botones que llegan al bot: vincular personas y manejar la puerta (bot_puerta)."""
 
     def __init__(self):
         super().__init__(daemon=True)
 
     def run(self):
         time.sleep(10)
+        menu_puesto = None
         while True:
             if not configurado():
                 time.sleep(30)
                 continue
+            if menu_puesto != token():
+                menu_puesto = token()
+                try:
+                    import bot_puerta
+                    bot_puerta.preparar()
+                except Exception as e:
+                    nk.log(f"Telegram: {e}")
             try:
                 s = cuentas.leer_sistema()
                 desplazamiento = int(s.get("telegram_offset") or 0)
                 cambios = _api("getUpdates", {"offset": desplazamiento, "timeout": 25,
-                                              "allowed_updates": ["message"]}, timeout=40) or []
+                                              "allowed_updates": ["message", "callback_query"]}, timeout=40) or []
                 for u in cambios:
                     desplazamiento = max(desplazamiento, u["update_id"] + 1)
+                    if u.get("callback_query"):
+                        try:
+                            import bot_puerta
+                            bot_puerta.boton(u["callback_query"])
+                        except Exception as e:
+                            nk.log(f"Telegram: botón: {e}")
+                        continue
                     m = u.get("message") or {}
                     texto, chat = (m.get("text") or "").strip(), (m.get("chat") or {}).get("id")
                     if not chat or (m.get("chat") or {}).get("type") != "private":
@@ -254,6 +328,8 @@ class Escucha(threading.Thread):
                         quien += f" (@{de['username']})"
                     if texto.startswith("/start ") and len(texto) > 7:
                         respuesta = _vincular(texto[7:].strip(), chat, quien)
+                    elif _bot_atiende(m, texto, chat):
+                        continue
                     else:
                         respuesta = ("Hola. Este bot es privado y solo envía los códigos y avisos de una puerta. "
                                      "Para conectarte, usa el enlace que te haya pasado quien gestiona la puerta.")

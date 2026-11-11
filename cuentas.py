@@ -312,6 +312,70 @@ def cambiar_password(usuario, nueva):
     raise RuntimeError("Usuario no encontrado.")
 
 
+# ---------------------------------------------------------------- PIN para abrir desde Telegram
+
+_FALLOS_PIN = {}  # usuario -> [fallos seguidos, bloqueado hasta (epoch)]
+MAX_FALLOS_PIN, BLOQUEO_PIN = 3, 15 * 60
+
+
+def validar_pin(pin):
+    pin = (pin or "").strip()
+    if not re.fullmatch(r"\d{4,8}", pin):
+        raise RuntimeError("El PIN tiene que tener de 4 a 8 cifras.")
+    if len(set(pin)) == 1 or pin in "0123456789" or pin in "9876543210":
+        raise RuntimeError("Ese PIN es demasiado fácil de adivinar (repetido o seguido). Elige otro.")
+    return pin
+
+
+def poner_pin(usuario, pin):
+    pin = validar_pin(pin)
+    with _cerrojo:
+        lista = leer_usuarios()
+        for u in lista:
+            if u["usuario"] == usuario:
+                u["pin_tg"] = _hash(pin)
+                _guardar_usuarios(lista)
+                _FALLOS_PIN.pop(usuario, None)
+                return
+    raise RuntimeError("Usuario no encontrado.")
+
+
+def quitar_pin(usuario):
+    with _cerrojo:
+        lista = leer_usuarios()
+        for u in lista:
+            if u["usuario"] == usuario:
+                u.pop("pin_tg", None)
+                _guardar_usuarios(lista)
+                return
+
+
+def tiene_pin(usuario):
+    u = buscar_usuario(usuario)
+    return bool(u and u.get("pin_tg"))
+
+
+def comprobar_pin(usuario, pin):
+    """Devuelve (correcto, mensaje). Tras 3 fallos seguidos bloquea 15 minutos."""
+    import time
+    u = buscar_usuario(usuario)
+    if not u or not u.get("pin_tg"):
+        return False, "No tienes PIN puesto. Ponlo en el panel: Ajustes → Avisos → Telegram."
+    fallos, hasta = _FALLOS_PIN.get(usuario, [0, 0])
+    if hasta > time.time():
+        return False, f"Demasiados intentos. Prueba de nuevo dentro de {int((hasta - time.time()) // 60) + 1} min."
+    p = u["pin_tg"]
+    if hmac.compare_digest(_hash((pin or "").strip(), p["sal"], p["iter"])["hash"], p["hash"]):
+        _FALLOS_PIN.pop(usuario, None)
+        return True, ""
+    fallos += 1
+    if fallos >= MAX_FALLOS_PIN:
+        _FALLOS_PIN[usuario] = [0, time.time() + BLOQUEO_PIN]
+        return False, "PIN incorrecto. Bloqueado 15 minutos por seguridad."
+    _FALLOS_PIN[usuario] = [fallos, 0]
+    return False, f"PIN incorrecto. Te quedan {MAX_FALLOS_PIN - fallos} intentos."
+
+
 def modificar_usuario(usuario, **cambios):
     with _cerrojo:
         lista = leer_usuarios()

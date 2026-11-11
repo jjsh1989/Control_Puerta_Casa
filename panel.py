@@ -213,6 +213,7 @@ def config_publica(cfg, usuario=None):
     c["telegram_avisos"] = bool(av)
     c["telegram_avisos_lista"] = [{"usuario": k, "nombre": v.get("nombre", ""), "yo": k == usuario} for k, v in av.items()]
     c["telegram_avisos_yo"] = usuario in av
+    c["telegram_pin_yo"] = cuentas.tiene_pin(usuario) if usuario else False
     for d in c["destinatarios"]:
         d["telegram_chat"] = bool(d.get("telegram_chat"))
     try:
@@ -828,6 +829,16 @@ class Manejador(BaseHTTPRequestHandler):
             enlace = telegram.crear_enlace(dest)
             nk.registrar("Enlace de Telegram creado", "Avisos de " + s["usuario"] if dest.startswith("_avisos") else dest, "")
             return self._ok({"enlace": enlace})
+        if ruta == "/api/telegram/pin":  # PIN para abrir la puerta desde Telegram (cada usuario el suyo)
+            if datos.get("quitar"):
+                cuentas.quitar_pin(s["usuario"])
+                nk.registrar("PIN de Telegram quitado", s.get("nombre") or s["usuario"], "")
+                return self._ok()
+            if not cuentas.verificar_password(s["usuario"], datos.get("password") or ""):
+                raise RuntimeError("La contraseña del panel no es correcta.")
+            cuentas.poner_pin(s["usuario"], datos.get("pin"))
+            nk.registrar("PIN de Telegram puesto", s.get("nombre") or s["usuario"], "")
+            return self._ok()
         if ruta == "/api/telegram/desvincular":
             dest = datos.get("destino") or ""
             if dest == "_avisos":

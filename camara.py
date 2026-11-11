@@ -442,9 +442,69 @@ def limpiar_antiguos():
                     f.unlink(missing_ok=True)
 
 
+def url_panel():
+    return (os.environ.get("PANEL_URL_PUBLICA") or cuentas.leer_sistema().get("url_publica") or "").rstrip("/")
+
+
 def url_evento(ident):
-    base = (os.environ.get("PANEL_URL_PUBLICA") or cuentas.leer_sistema().get("url_publica") or "").rstrip("/")
+    base = url_panel()
     return f"{base}/#evento={ident}" if base else ""
+
+
+# ---------------------------------------------------------------- silenciar una cámara (botón de Telegram)
+
+def silenciada(sn):
+    """Hasta cuándo (epoch) están silenciados los avisos de movimiento de esa cámara; 0 si no lo están."""
+    hasta = (cuentas.leer_sistema().get("camara_silencio") or {}).get(sn, 0)
+    return hasta if hasta > time.time() else 0
+
+
+def silenciar(sn, segundos=3600):
+    s = cuentas.leer_sistema()
+    sil = {k: v for k, v in (s.get("camara_silencio") or {}).items() if v > time.time()}
+    if segundos:
+        sil[sn] = time.time() + segundos
+    else:
+        sil.pop(sn, None)
+    s["camara_silencio"] = sil
+    cuentas.guardar_sistema(s)
+    return sil.get(sn, 0)
+
+
+# ---------------------------------------------------------------- botones de los avisos en Telegram
+
+def botones_aviso(cuenta, ident, sn, tipo):
+    """Botones bajo el aviso, según cómo estén ahora (silenciada, marcado «no borrar»)."""
+    def b(texto, dato):
+        return {"text": texto, "callback_data": dato} if len(dato.encode()) <= 64 else None
+    fila1, fila2 = [], []
+    if tipo == "movimiento" and sn:
+        hasta = silenciada(sn)
+        fila1.append(b(f"🔔 Reactivar (silencio hasta {datetime.fromtimestamp(hasta):%H:%M})", f"r|{cuenta}|{sn}")
+                     if hasta else b("🔕 Silenciar 1 h", f"s|{cuenta}|{sn}"))
+    if ident:
+        e = evento(cuenta, ident) or {}
+        fila1.append(b("📌 Guardado · quitar", f"m|{cuenta}|{ident}") if e.get("guardar")
+                     else b("📌 No borrar", f"n|{cuenta}|{ident}"))
+    fila2.append(b("🚪 Puerta", f"p|{cuenta}"))
+    base = url_panel()
+    if sn and base.startswith("https://"):
+        fila2.append({"text": "📹 En directo", "url": f"{base}/#directo={sn}"})
+    filas = [[x for x in f if x] for f in (fila1, fila2)]
+    return [f for f in filas if f]
+
+
+def _portada(foto):
+    """Miniatura JPEG (≤320 px) para el vídeo de Telegram."""
+    if not foto:
+        return None
+    try:
+        r = subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "image2pipe", "-i", "-", "-vf",
+                            "scale='min(320,iw)':-2", "-q:v", "5", "-f", "image2", "-c:v", "mjpeg", "-"],
+                           input=foto, capture_output=True, timeout=20)
+        return r.stdout if r.returncode == 0 and 0 < len(r.stdout) < 200_000 else None
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------- cliente WebSocket
@@ -785,6 +845,8 @@ class Cliente(threading.Thread):
         self.recientes.append((time.time(), cuenta, ident))
         if time.time() - self.ultimo_aviso.get(sn, 0) < ESPERA_ENTRE_AVISOS:
             return
+        if silenciada(sn):
+            return  # silenciada desde Telegram («🔕 Silenciar 1 h»): se guarda el evento, pero sin aviso
         with cuentas.en_cuenta(cuenta, "cámara"):
             cfg = nk.cargar_config()
             regla = alertas.ajustes(cfg)["reglas"]["movimiento"]
@@ -848,7 +910,8 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
     enlace = url_evento(ident)
     texto_extra = f"\n📷 Ver foto y clip: {enlace}" if enlace else ""
     recibos = {}  # {chat de Telegram: id del mensaje con la foto}
-    destinos = alertas.enviar(cfg, tipo, detalle + texto_extra, momento, foto=foto, recibos=recibos)
+    destinos = alertas.enviar(cfg, tipo, detalle + texto_extra, momento, foto=foto, recibos=recibos,
+                              botones=botones_aviso(cuenta, ident, sn, tipo))
     titulo = f"{alertas.TIPOS.get(tipo, tipo)} · {bateria.nombre_cuenta()}"
     pie = f"{titulo}\n\n{detalle}{texto_extra}\n{momento:%d/%m/%Y %H:%M:%S}"
     if con_clip and sn and CLIENTE.driver:
@@ -864,10 +927,11 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
                 if "telegram" in bateria.canales_de(dest) and c.get("telegram_avisos"):
                     import telegram
                     sueltos = []  # chats donde no había foto que cambiar: el clip va aparte
+                    portada, botones = _portada(foto), botones_aviso(cuenta, ident, sn, tipo)
                     for chat in telegram.chats_avisos(c):
                         if chat in recibos:
                             try:
-                                telegram.cambiar_a_video(chat, recibos[chat], mp4, f"🎥 {pie}")
+                                telegram.cambiar_a_video(chat, recibos[chat], mp4, f"🎥 {pie}", portada, botones)
                                 continue
                             except Exception as e:
                                 nk.log(f"Telegram: no se pudo cambiar la foto por el clip ({e}); va aparte")

@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir "cryptography==43.0.3" "websocket-client==1.8.0" 
     && useradd --uid 1000 --create-home puerta
 
 WORKDIR /app
-COPY alertas.py bateria.py camara.py cuentas.py nuki_codigos.py nuki_extra.py telegram.py waha.py panel.py panel.html ./
+COPY alertas.py bateria.py bot_puerta.py camara.py cuentas.py nuki_codigos.py nuki_extra.py telegram.py waha.py panel.py panel.html ./
 RUN mkdir -p /app/datos && chown -R puerta:puerta /app/datos
 
 USER puerta

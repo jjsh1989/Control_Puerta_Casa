@@ -1077,6 +1077,23 @@
     <button type="button" onclick="dlgTelegram.close(); cargarEstado(); cargarAjustes()">Cerrar</button>
   </div>
 </dialog>
+<dialog id="dlgPinTg">
+  <form onsubmit="guardarPinTg(event)">
+    <h2>PIN para abrir desde Telegram</h2>
+    <p class="muted peq">Lo pedirá el bot cada vez que pulses «Abrir». Es solo tuyo: cada persona del panel pone el suyo. No uses el mismo que el del teclado de la puerta.</p>
+    <label for="pinTgNuevo">PIN (4 a 8 cifras)</label>
+    <input id="pinTgNuevo" type="password" inputmode="numeric" pattern="\d{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required>
+    <label for="pinTgOtra">Repite el PIN</label>
+    <input id="pinTgOtra" type="password" inputmode="numeric" pattern="\d{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required>
+    <label for="pinTgPass">Tu contraseña del panel</label>
+    <input id="pinTgPass" type="password" autocomplete="current-password" required>
+    <div class="ayuda">Tras 3 PIN incorrectos seguidos, el bot se bloquea 15 minutos.</div>
+    <div class="pie">
+      <button type="button" onclick="dlgPinTg.close()">Cancelar</button>
+      <button class="principal">Guardar PIN</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="dlgCamara">
   <h2 id="dcTitulo">Cámara</h2>
   <p class="muted peq" id="dcSub" style="margin:4px 0 0"></p>
@@ -2016,7 +2033,13 @@ function pintarTgAvisos() {
             ${x.yo || admin ? `<a href="#" style="margin-left:4px" title="Quitar" aria-label="Quitar a ${esc(x.usuario)}" onclick="quitarTgAviso('${esc(x.usuario)}'); return false">✕</a>` : ""}</span>`).join("")
             : '<span class="chip aviso">Nadie vinculado</span>'}
          <button type="button" onclick="abrirTelegram('_avisos')">${ico("telegram")}${CONFIG.telegram_avisos_yo ? "Volver a vincular el mío" : "Vincular mi Telegram"}</button></div>
-         <div class="ayuda">Cada persona que entra al panel vincula su propio Telegram y todos reciben los avisos.</div>`;
+         <div class="ayuda">Cada persona que entra al panel vincula su propio Telegram y todos reciben los avisos.</div>
+         ${CONFIG.telegram_avisos_yo ? `<div class="tg-pin">
+           <div class="tg-estado" style="flex-wrap:wrap"><span class="chip${CONFIG.telegram_pin_yo ? " on" : ""}">🔐 ${CONFIG.telegram_pin_yo ? "PIN puesto" : "Sin PIN"}</span>
+             <button type="button" onclick="abrirPinTg()">${CONFIG.telegram_pin_yo ? "Cambiar PIN" : "Poner PIN"}</button>
+             ${CONFIG.telegram_pin_yo ? '<button type="button" class="peligro" onclick="quitarPinTg(this)">Quitar PIN</button>' : ""}</div>
+           <div class="ayuda">En Telegram, escribe <b>/puerta</b> para ver el estado y cerrar con llave. Para <b>abrir</b> desde allí hace falta tu PIN (4 a 8 cifras); sin PIN, desde Telegram no se puede abrir.</div>
+         </div>` : ""}`;
   });
   if ($("tgBotChip")) {
     $("tgBotChip").textContent = t.configurado ? (t.bot ? "@" + t.bot : "Configurado") : "Sin configurar";
@@ -2024,6 +2047,23 @@ function pintarTgAvisos() {
     $("tg_token").placeholder = t.configurado ? "Guardado en la bóveda ✓ (vacío = no cambiar)" : "123456789:AA…";
     $("tgQuitar").classList.toggle("oculto", !t.configurado);
   }
+}
+async function abrirPinTg() {
+  $("pinTgNuevo").value = ""; $("pinTgOtra").value = ""; $("pinTgPass").value = "";
+  $("dlgPinTg").showModal(); $("pinTgNuevo").focus();
+}
+async function guardarPinTg(ev) {
+  ev.preventDefault();
+  const pin = $("pinTgNuevo").value.trim();
+  if (pin !== $("pinTgOtra").value.trim()) return aviso("Los dos PIN no coinciden");
+  await conBoton(ev.submitter, async () => {
+    await api("POST", "/api/telegram/pin", {pin, password: $("pinTgPass").value});
+    $("dlgPinTg").close(); aviso("PIN guardado"); await cargarAjustes();
+  });
+}
+async function quitarPinTg(b) {
+  if (!await confirmar("Ya no podrás abrir la puerta desde Telegram hasta que pongas otro PIN.", {titulo: "Quitar PIN", boton: "Quitar", peligro: true})) return;
+  await conBoton(b, async () => { await api("POST", "/api/telegram/pin", {quitar: true}); aviso("PIN quitado"); await cargarAjustes(); });
 }
 async function guardarTelegram(ev) {
   ev.preventDefault();
@@ -2586,6 +2626,12 @@ function verFotoEntrada(f, cuando) {
 }
 function cerrarEvento() { $("evMedia").innerHTML = ""; $("evAcciones").innerHTML = ""; $("dlgEvento").close(); if (location.hash.startsWith("#evento=")) history.replaceState(null, "", location.pathname); }
 async function abrirEventoDelEnlace() {
+  const d = location.hash.match(/^#directo=([\w-]+)/);
+  if (d && YO?.autenticado) {  // botón «📹 En directo» de Telegram
+    history.replaceState(null, "", location.pathname);
+    irA("camara"); await cargarCamara(null, true); if (DIRECTO !== d[1]) verDirecto(d[1]);
+    return;
+  }
   const m = location.hash.match(/^#evento=([\w-]+)/);
   if (!m || !YO?.autenticado) return;
   irA("camara"); await cargarCamara(null, true); abrirEvento(m[1]);
