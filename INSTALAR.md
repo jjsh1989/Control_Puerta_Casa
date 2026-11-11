@@ -129,6 +129,17 @@ Ajustes → **Comunicación** → *Avisos*: activa los que quieras (código inco
 
 ⚠️ **La copia incluye la clave maestra y todos los secretos.** Guárdala fuera del servidor y **nunca en git**. Si pierdes `secretos/clave_maestra`, no se pueden leer los tokens de la bóveda: habría que volver a pegarlos.
 
+## 8b. Copia de seguridad y cómo recuperarla
+
+En **Ajustes → Casas → Copia de seguridad** pon una contraseña de copias (apúntala en un sitio seguro) y activa la copia semanal. Cada copia es un archivo `copia-panel-AAAAMMDD-HHMM.lslab` cifrado: se guardan las 4 últimas en `datos/copias/` y te llega por Telegram. No incluye fotos ni clips, ni la sesión de WhatsApp (habrá que volver a vincularlo).
+
+Para recuperarla en un servidor nuevo: instala el panel (pasos 1 a 3) **sin arrancarlo**, copia el archivo `.lslab` a `/opt/puerta/` y ejecuta:
+```bash
+cd /opt/puerta && docker compose run --rm -v ./secretos:/app/secretos -v ./copia.lslab:/copia.lslab panel python copias.py restaurar /copia.lslab
+docker compose up -d
+```
+Te pedirá la contraseña de las copias y dejará `datos/` y la clave maestra en `secretos/` como estaban.
+
 ## 9. (Opcional) Un dominio propio
 
 Se puede usar un dominio (p. ej. `puerta.midominio.es`) apuntando a la IP de Tailscale del servidor (`100.x.y.z`), de modo que **solo funcione dentro de Tailscale**. Hace falta un certificado HTTPS por DNS (Caddy o similar con la API de tu proveedor de DNS). La dirección `*.ts.net` del paso 4 ya funciona sin nada de esto.

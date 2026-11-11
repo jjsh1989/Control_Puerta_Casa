@@ -50,7 +50,18 @@ The UI and docs are in Spanish; issues and pull requests in English are welcome 
 - Escribe **/puerta** al bot: estado de la cerradura, puerta y batería, y botones para **cerrar con llave**, **abrir** y abrir el **portal** (si hay Opener).
 - **Abrir pide un PIN** que cada usuario pone en el panel (Ajustes → Comunicación → «La puerta desde Telegram», con su contraseña). El bot borra el mensaje del PIN, la petición caduca a los 2 minutos y 3 fallos seguidos bloquean 15 minutos. Sin PIN no se puede abrir desde Telegram.
 - Escribe **/camara** para elegir una cámara y recibir una **foto al momento**, con botones para otra foto, un **clip de 15 s** o el **directo**.
+- **/codigo**: un código temporal (2 h, hasta esta noche, 24 h o 3 días) para una visita, con PIN, listo para reenviar y con botón para anularlo.
+- **🏠 En casa / 🚶 Fuera** en el menú de /puerta: aplica a las cámaras lo mismo que «Cámaras y cerradura» al entrar o al salir.
 - Todo queda en el Historial y los demás que reciben avisos se enteran («Fulano ha abierto la puerta desde Telegram»).
+
+**Avisos extra** (Ajustes → Comunicación)
+- **Recordatorio de noche** si la puerta no está cerrada con llave, con botón «🔒 Cerrar ahora».
+- **Resumen del día**: aperturas y quién, avisos, detecciones de cámara y batería.
+- **Avisos de cámara sin sonido** en una franja horaria (todas las cámaras o solo las elegidas).
+- Si alguien se queda delante de la cámara, las detecciones seguidas se juntan en **un solo mensaje** que se va actualizando.
+- Para los administradores: aviso si el **disco** pasa del 90 % o las **cámaras** llevan 15 min sin conexión.
+
+**Copia de seguridad** (Ajustes → Casas): semanal y cifrada con tu contraseña; se guardan 4 en el servidor y cada una te llega por Telegram. Cómo recuperarla, en INSTALAR.md.
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)
 - ⭐ Cámara predeterminada por casa, 📷 avisos por movimiento o timbre, y cada cámara asignada a su casa (o oculta).
@@ -78,6 +89,8 @@ The UI and docs are in Spanish; issues and pull requests in English are welcome 
 | `nuki_extra.py` | Lo que depende de cada cerradura: capacidades, ajustes, accesos, Opener y programaciones |
 | `camara.py` | Cámaras Eufy: eventos, fotos, clips y directo |
 | `telegram.py` | Bot de Telegram (códigos y avisos) |
+| `extras.py` | Recordatorio de la llave, resumen diario, avisos sin sonido y salud del servidor |
+| `copias.py` | Copia de seguridad cifrada y cómo recuperarla |
 | `bot_puerta.py` | La puerta desde Telegram: /puerta, botones de los avisos y PIN para abrir |
 | `waha.py` | WhatsApp con WAHA y control limitado de Docker |
 | `bateria.py` | Batería de la cerradura y correo (SMTP) |

@@ -144,15 +144,15 @@ def enviar_a_todos(cfg, funcion, *args, recibos=None):
 
 # ---------------------------------------------------------------- envío
 
-def enviar(chat, texto, botones=None):
-    d = {"chat_id": chat, "text": texto, "disable_web_page_preview": True}
+def enviar(chat, texto, botones=None, sin_sonido=False):
+    d = {"chat_id": chat, "text": texto, "disable_web_page_preview": True, "disable_notification": bool(sin_sonido)}
     if botones:
         d["reply_markup"] = {"inline_keyboard": botones}
     return _api("sendMessage", d)
 
 
-def enviar_foto(chat, contenido, texto="", botones=None):
-    d = {"chat_id": chat, "caption": texto[:1000]}
+def enviar_foto(chat, contenido, texto="", botones=None, sin_sonido=False):
+    d = {"chat_id": chat, "caption": texto[:1000], "disable_notification": "true" if sin_sonido else "false"}
     if botones:
         d["reply_markup"] = {"inline_keyboard": botones}
     return _api("sendPhoto", d, ("photo", "foto.jpg", contenido, "image/jpeg"), timeout=60)
@@ -163,6 +163,18 @@ def editar_texto(chat, mensaje, texto, botones=None):
          "reply_markup": {"inline_keyboard": botones or []}}
     try:
         return _api("editMessageText", d)
+    except ErrorTelegram as e:
+        if "not modified" not in str(e):
+            raise
+
+
+def editar_pie(chat, mensaje, texto, botones=None):
+    """Cambia el texto bajo una foto o vídeo ya enviado (sin volver a sonar)."""
+    d = {"chat_id": chat, "message_id": mensaje, "caption": texto[:1000]}
+    if botones:
+        d["reply_markup"] = {"inline_keyboard": botones}
+    try:
+        return _api("editMessageCaption", d)
     except ErrorTelegram as e:
         if "not modified" not in str(e):
             raise

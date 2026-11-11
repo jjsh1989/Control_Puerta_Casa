@@ -29,6 +29,7 @@ CARPETA_CRED = cuentas.DATOS / "eufy"
 CARPETA_MEDIA = cuentas.DATOS / "camara"
 DIAS_GUARDAR = 30
 ESPERA_ENTRE_AVISOS = 120  # segundos entre avisos de movimiento de la misma cámara
+DURACION_VISITA = 15 * 60  # hasta cuánto se juntan las detecciones seguidas en el mismo mensaje
 SEGUNDOS_CLIP = 15
 RE_ARCHIVO = re.compile(r"^[\w-]+\.(jpg|mp4)$")
 
@@ -552,6 +553,7 @@ class Cliente(threading.Thread):
         self.cerrojo_directo = threading.Lock()
         self.bloqueo_clip = {}
         self.ultimo_aviso = {}
+        self.visitas = {}  # sn -> el último aviso de movimiento, para juntar las detecciones seguidas
         self.recientes = deque(maxlen=200)  # (momento, cuenta, ident)
 
     # ---------- conexión
@@ -862,6 +864,13 @@ class Cliente(threading.Thread):
             ev["foto"] = f"{ident}.jpg"
         guardar_evento(cuenta, ev)
         self.recientes.append((time.time(), cuenta, ident))
+        v = self.visitas.get(sn)
+        if v and time.time() - v["ultima"] < ESPERA_ENTRE_AVISOS and time.time() - v["inicio"] < DURACION_VISITA:
+            # misma visita: no se manda otro mensaje, se actualiza el que ya llegó
+            v["n"] += 1
+            v["ultima"], v["hora_ultima"] = time.time(), momento
+            _actualizar_visita(v)
+            return
         if time.time() - self.ultimo_aviso.get(sn, 0) < ESPERA_ENTRE_AVISOS:
             return
         if silenciada(sn):
@@ -872,8 +881,10 @@ class Cliente(threading.Thread):
             if not (regla["activo"] and alertas.en_franja(regla, momento)):
                 return
             self.ultimo_aviso[sn] = time.time()
+            visita = {"inicio": time.time(), "ultima": time.time(), "n": 1, "recibos": {}, "video": False}
+            self.visitas[sn] = visita
             enviar_con_camara(cfg, "movimiento", f"{que} · {nombre_cam}", momento, ident_existente=ident,
-                              foto=foto, sn=sn, con_clip=regla.get("clip", True))
+                              foto=foto, sn=sn, con_clip=regla.get("clip", True), visita=visita)
 
 
 CLIENTE = Cliente()
@@ -905,7 +916,30 @@ def foto_cercana(sn, segundos=180):
     return foto if foto and time.time() - t < segundos else None
 
 
-def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=None, sn=None, con_clip=True):
+def texto_visita(v):
+    t = ("🎥 " if v.get("video") else "") + v["pie"]
+    if v.get("n", 1) > 1:
+        t += f"\n👀 Sigue habiendo movimiento · {v['n']} detecciones (última a las {v['hora_ultima']:%H:%M:%S})"
+    return t
+
+
+def _actualizar_visita(v):
+    if not v.get("recibos"):
+        return
+    try:
+        import telegram
+        botones = botones_aviso(v["cuenta"], v["ident"], v["sn"], v["tipo"])
+        for chat, mid in v["recibos"].items():
+            try:
+                telegram.editar_pie(chat, mid, texto_visita(v), botones)
+            except Exception as e:
+                nk.log(f"Telegram: no se pudo actualizar el aviso ({e})")
+    except Exception:
+        pass
+
+
+def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=None, sn=None, con_clip=True,
+                      visita=None):
     """Envía el aviso con la foto (Telegram) o el enlace (WhatsApp/correo) y después, en segundo plano, el clip.
     En Telegram el clip sustituye a la foto en el mismo mensaje, para que cada aviso sea un solo mensaje."""
     import alertas
@@ -929,10 +963,14 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
     enlace = url_evento(ident)
     texto_extra = f"\n📷 Ver foto y clip: {enlace}" if enlace else ""
     recibos = {}  # {chat de Telegram: id del mensaje con la foto}
+    import extras
+    callado = tipo == "movimiento" and bool(sn) and extras.sin_sonido(cfg, sn)
     destinos = alertas.enviar(cfg, tipo, detalle + texto_extra, momento, foto=foto, recibos=recibos,
-                              botones=botones_aviso(cuenta, ident, sn, tipo))
+                              botones=botones_aviso(cuenta, ident, sn, tipo), sin_sonido=callado)
     titulo = f"{alertas.TIPOS.get(tipo, tipo)} · {bateria.nombre_cuenta()}"
     pie = f"{titulo}\n\n{detalle}{texto_extra}\n{momento:%d/%m/%Y %H:%M:%S}"
+    if visita is not None:
+        visita.update(recibos=recibos, pie=pie, cuenta=cuenta, ident=ident, tipo=tipo, sn=sn)
     if con_clip and sn and CLIENTE.driver:
         def grabar():
             mp4 = CLIENTE.clip(sn)
@@ -947,10 +985,13 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
                     import telegram
                     sueltos = []  # chats donde no había foto que cambiar: el clip va aparte
                     portada, botones = _portada(foto), botones_aviso(cuenta, ident, sn, tipo)
+                    if visita is not None:
+                        visita["video"] = True
+                    pie_video = texto_visita(visita) if visita is not None else f"🎥 {pie}"
                     for chat in telegram.chats_avisos(c):
                         if chat in recibos:
                             try:
-                                telegram.cambiar_a_video(chat, recibos[chat], mp4, f"🎥 {pie}", portada, botones)
+                                telegram.cambiar_a_video(chat, recibos[chat], mp4, pie_video, portada, botones)
                                 continue
                             except Exception as e:
                                 nk.log(f"Telegram: no se pudo cambiar la foto por el clip ({e}); va aparte")

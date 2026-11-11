@@ -25,6 +25,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 import alertas
 import bateria
 import camara
+import copias
+import extras
 import telegram
 import cuentas
 import nuki_codigos as nk
@@ -214,6 +216,9 @@ def config_publica(cfg, usuario=None):
     c["telegram_avisos_lista"] = [{"usuario": k, "nombre": v.get("nombre", ""), "yo": k == usuario} for k, v in av.items()]
     c["telegram_avisos_yo"] = usuario in av
     c["telegram_pin_yo"] = cuentas.tiene_pin(usuario) if usuario else False
+    c["extras"] = extras.ajustes(cfg)
+    c["extras_camaras"] = [{"sn": sn, "nombre": camara.CLIENTE.dispositivos.get(sn, {}).get("nombre", sn)}
+                           for sn in camara.camaras_de(cuentas.cuenta_actual())]
     for d in c["destinatarios"]:
         d["telegram_chat"] = bool(d.get("telegram_chat"))
     try:
@@ -974,9 +979,36 @@ class Manejador(BaseHTTPRequestHandler):
                                                 sn=camaras[0], con_clip=True)
             return self._ok({"destinos": destinos})
 
+        if ruta == "/api/extras":  # recordatorio de la llave, resumen diario y avisos sin sonido (por casa)
+            if datos.get("resumen_ahora"):
+                n = extras._a_telegram(cfg, extras.resumen(cuentas.cuenta_actual(), cfg, datetime.now().date()))
+                if not n:
+                    raise RuntimeError("No hay nadie con Telegram vinculado para los avisos de esta casa.")
+                return self._ok({"enviados": n})
+            cfg["extras"] = extras.validar(datos, set(camara.camaras_de(cuentas.cuenta_actual())))
+            nk.guardar_config(cfg)
+            e = cfg["extras"]
+            nk.registrar("Avisos extra", s.get("nombre") or s["usuario"],
+                         f"Llave {'a las ' + e['llave']['hora'] if e['llave']['activo'] else 'no'} · "
+                         f"resumen {'a las ' + e['resumen']['hora'] if e['resumen']['activo'] else 'no'} · "
+                         f"sin sonido {e['silencio']['desde'] + '–' + e['silencio']['hasta'] if e['silencio']['activo'] else 'no'}")
+            return self._ok(extras.ajustes(cfg))
+
         # ---------- solo administrador
         if not admin:
             return self._error(403, "Solo el administrador puede hacer esto.")
+        if ruta == "/api/admin/copias":
+            if datos.get("password"):
+                cuentas_ok = cuentas.verificar_password(s["usuario"], datos.get("mi_password") or "")
+                if not cuentas_ok:
+                    raise RuntimeError("Tu contraseña del panel no es correcta.")
+                copias.poner_clave(datos["password"])
+                nk.registrar("Contraseña de las copias puesta", s.get("nombre") or s["usuario"], "")
+            if any(k in datos for k in ("activo", "dia", "hora")):
+                copias.poner_ajustes(datos.get("activo"), datos.get("dia"), datos.get("hora"))
+            if datos.get("hacer"):
+                return self._ok({"texto": copias.hacer_copia(s.get("nombre") or s["usuario"]), **copias.ajustes()})
+            return self._ok(copias.ajustes())
         if ruta == "/api/admin/nuki/ajustes":
             hecho = nuki_extra.guardar_ajustes(cfg, datos.get("cambios") or {})
             if hecho:
@@ -1350,6 +1382,7 @@ def main():
     waha.Vigilante().start()
     Programador().start()
     alertas.Vigilante().start()
+    extras.Extras().start()
     telegram.Escucha().start()
     camara.CLIENTE.start()
     camara.Limpieza().start()

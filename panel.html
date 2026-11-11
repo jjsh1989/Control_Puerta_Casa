@@ -782,6 +782,27 @@
           <p class="muted peq" style="margin:8px 0 12px">Escribe <b>/puerta</b> al bot para ver el estado, cerrar con llave o abrir. Para <b>abrir</b> te pedirá tu PIN (4 a 8 cifras), que es solo tuyo: cada persona del panel pone el suyo.</p>
           <div id="tgPuerta"></div>
         </div>
+        <div class="card" data-grupo="comunicacion" id="cardExtras">
+          <div class="cab" style="margin-bottom:0"><h2>Avisos extra por Telegram</h2><span class="muted peq" id="exResumen"></span></div>
+          <p class="muted peq" style="margin:8px 0 12px">Llegan a quienes tienen su Telegram vinculado para los avisos de esta casa.</p>
+          <label class="interruptor"><input type="checkbox" id="ex_llave"> Avisarme si la puerta no está cerrada con llave a las</label>
+          <input id="ex_llave_hora" type="time" style="max-width:9em">
+          <div class="ayuda">Si a esa hora no tiene la llave echada, te llega un mensaje con el botón «🔒 Cerrar ahora».</div>
+          <label class="interruptor" style="margin-top:12px"><input type="checkbox" id="ex_resumen"> Resumen del día a las</label>
+          <input id="ex_resumen_hora" type="time" style="max-width:9em">
+          <div class="ayuda">Aperturas y quién, avisos enviados, detecciones de cámara y batería.</div>
+          <label class="interruptor" style="margin-top:12px"><input type="checkbox" id="ex_silencio"> Avisos de cámara sin sonido</label>
+          <div class="rejilla">
+            <div><label for="ex_sil_desde">Desde</label><input id="ex_sil_desde" type="time"></div>
+            <div><label for="ex_sil_hasta">Hasta</label><input id="ex_sil_hasta" type="time"></div>
+          </div>
+          <div id="exCamaras"></div>
+          <div class="ayuda">En esa franja el aviso llega igual (foto, clip y botones), pero el móvil no suena ni vibra. Sin marcar ninguna cámara, vale para todas.</div>
+          <div class="acciones" style="margin-top:12px">
+            <button type="button" class="principal" onclick="guardarExtras(this)">Guardar</button>
+            <button type="button" onclick="resumenAhora(this)">📋 Enviarme el resumen ahora</button>
+          </div>
+        </div>
         <div class="card" data-grupo="comunicacion" id="cardMensajes">
           <h2>WhatsApp</h2>
           <label for="proveedor">Forma de envío</label>
@@ -929,6 +950,23 @@
         <pre id="logs" class="oculto"></pre>
       </div>
     
+      <div class="card solo-admin" data-grupo="casas" id="cardCopias">
+        <div class="cab" style="margin-bottom:0"><h2>Copia de seguridad</h2><span class="chip" id="cpChip"></span></div>
+        <p class="muted peq" style="margin:8px 0 12px">Guarda los ajustes de todas las casas (códigos, personas, usuarios, Telegram, cámaras, claves de la bóveda…), pero no las fotos ni los clips.
+          Va cifrada con una contraseña tuya: se guardan las 4 últimas en el servidor y cada una te llega por Telegram, para tenerla fuera de casa.</p>
+        <div id="cpEstado" class="ayuda"></div>
+        <div class="rejilla">
+          <div><label for="cp_dia">Cada semana, el</label><select id="cp_dia"></select></div>
+          <div><label for="cp_hora">A las</label><input id="cp_hora" type="time"></div>
+        </div>
+        <label class="interruptor" style="margin-top:8px"><input type="checkbox" id="cp_activo"> Hacer la copia automáticamente</label>
+        <div class="acciones" style="margin-top:12px">
+          <button type="button" class="principal" onclick="guardarCopias(this)">Guardar</button>
+          <button type="button" onclick="abrirClaveCopias()">🔑 <span id="cpBotonClave">Poner contraseña</span></button>
+          <button type="button" onclick="copiaAhora(this)">💾 Hacer copia ahora</button>
+        </div>
+        <div class="ayuda">Para recuperarla en un servidor nuevo, mira «Recuperar una copia» en INSTALAR.md. <b>Sin la contraseña no se puede recuperar</b>: apúntala en un sitio seguro.</div>
+      </div>
       <div class="card solo-admin" data-grupo="casas" id="cardCasas">
         <div class="cab"><h2>Casas y usuarios</h2>
           <div class="acciones">
@@ -1096,6 +1134,22 @@
     <div class="pie">
       <button type="button" onclick="dlgPinTg.close()">Cancelar</button>
       <button class="principal">Guardar PIN</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="dlgClaveCopias">
+  <form onsubmit="guardarClaveCopias(event)">
+    <h2>Contraseña de las copias</h2>
+    <p class="muted peq">Con ella se cifran las copias. Si la cambias, las copias antiguas siguen necesitando la contraseña anterior.</p>
+    <label for="cpClave">Contraseña nueva (mínimo 10 caracteres)</label>
+    <input id="cpClave" type="password" minlength="10" autocomplete="new-password" required>
+    <label for="cpClave2">Repítela</label>
+    <input id="cpClave2" type="password" minlength="10" autocomplete="new-password" required>
+    <label for="cpMiPass">Tu contraseña del panel</label>
+    <input id="cpMiPass" type="password" autocomplete="current-password" required>
+    <div class="pie">
+      <button type="button" onclick="dlgClaveCopias.close()">Cancelar</button>
+      <button class="principal">Guardar</button>
     </div>
   </form>
 </dialog>
@@ -2060,6 +2114,56 @@ function pintarTgAvisos() {
     $("tgQuitar").classList.toggle("oculto", !t.configurado);
   }
 }
+function pintarExtras() {
+  const e = CONFIG.extras; if (!e || !$("ex_llave")) return;
+  $("ex_llave").checked = e.llave.activo; $("ex_llave_hora").value = e.llave.hora;
+  $("ex_resumen").checked = e.resumen.activo; $("ex_resumen_hora").value = e.resumen.hora;
+  $("ex_silencio").checked = e.silencio.activo; $("ex_sil_desde").value = e.silencio.desde; $("ex_sil_hasta").value = e.silencio.hasta;
+  const cams = CONFIG.extras_camaras || [];
+  $("exCamaras").innerHTML = cams.length ? `<label>Solo estas cámaras</label><div class="canales">${cams.map(c =>
+    `<label class="canal"><input type="checkbox" data-sn="${esc(c.sn)}"${e.silencio.camaras.includes(c.sn) ? " checked" : ""}>${esc(c.nombre)}</label>`).join("")}</div>` : "";
+  const partes = [e.llave.activo && "llave " + e.llave.hora, e.resumen.activo && "resumen " + e.resumen.hora, e.silencio.activo && "sin sonido"].filter(Boolean);
+  $("exResumen").textContent = partes.length ? partes.join(" · ") : "Nada activado";
+}
+async function guardarExtras(b) {
+  const datos = {llave: {activo: $("ex_llave").checked, hora: $("ex_llave_hora").value},
+    resumen: {activo: $("ex_resumen").checked, hora: $("ex_resumen_hora").value},
+    silencio: {activo: $("ex_silencio").checked, desde: $("ex_sil_desde").value, hasta: $("ex_sil_hasta").value,
+      camaras: [...document.querySelectorAll("#exCamaras input:checked")].map(x => x.dataset.sn)}};
+  await conBoton(b, async () => { CONFIG.extras = (await api("POST", "/api/extras", datos)).resultado; pintarExtras(); aviso("Guardado"); });
+}
+async function resumenAhora(b) {
+  await conBoton(b, async () => { await api("POST", "/api/extras", {resumen_ahora: true}); aviso("Resumen enviado por Telegram"); });
+}
+const DIAS_CP = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+function pintarCopias(c) {
+  if (!$("cp_dia").options.length) $("cp_dia").innerHTML = DIAS_CP.map((d, i) => `<option value="${i}">${d}</option>`).join("");
+  $("cp_dia").value = c.dia; $("cp_hora").value = c.hora; $("cp_activo").checked = c.activo;
+  $("cpBotonClave").textContent = c.clave ? "Cambiar contraseña" : "Poner contraseña";
+  $("cpChip").textContent = !c.clave ? "Sin contraseña" : c.activo ? "Semanal" : "Desactivada";
+  $("cpChip").className = "chip" + (c.clave && c.activo ? " on" : c.error ? " aviso" : "");
+  $("cpEstado").innerHTML = (c.ultima ? `Última copia: ${esc(new Date(c.ultima).toLocaleString("es-ES"))}${c.tamano ? " (" + esc(c.tamano) + ")" : ""}.` : "Todavía no hay ninguna copia.")
+    + (c.error ? `<br>⚠️ Falló el ${esc(new Date(c.error.hora).toLocaleString("es-ES"))}: ${esc(c.error.texto)}` : "");
+}
+async function cargarCopias() { pintarCopias((await api("POST", "/api/admin/copias", {})).resultado); }
+async function guardarCopias(b) {
+  await conBoton(b, async () => {
+    pintarCopias((await api("POST", "/api/admin/copias", {activo: $("cp_activo").checked, dia: +$("cp_dia").value, hora: $("cp_hora").value})).resultado);
+    aviso("Guardado");
+  });
+}
+function abrirClaveCopias() { ["cpClave", "cpClave2", "cpMiPass"].forEach(i => $(i).value = ""); $("dlgClaveCopias").showModal(); $("cpClave").focus(); }
+async function guardarClaveCopias(ev) {
+  ev.preventDefault();
+  if ($("cpClave").value !== $("cpClave2").value) return aviso("Las dos contraseñas no coinciden");
+  await conBoton(ev.submitter, async () => {
+    pintarCopias((await api("POST", "/api/admin/copias", {password: $("cpClave").value, mi_password: $("cpMiPass").value})).resultado);
+    $("dlgClaveCopias").close(); aviso("Contraseña de las copias guardada");
+  });
+}
+async function copiaAhora(b) {
+  await conBoton(b, async () => { const r = (await api("POST", "/api/admin/copias", {hacer: true})).resultado; pintarCopias(r); aviso("Copia hecha: " + r.texto); });
+}
 async function abrirPinTg() {
   $("pinTgNuevo").value = ""; $("pinTgOtra").value = ""; $("pinTgPass").value = "";
   $("dlgPinTg").showModal(); $("pinTgNuevo").focus();
@@ -2805,6 +2909,8 @@ async function cargarAjustes() {
   mostrarCanalBateria();
   pintarReglas();
   pintarTgAvisos();
+  pintarExtras();
+  if (YO?.rol === "admin") cargarCopias().catch(() => {});
   mostrarProveedor();
   pintarBateria();
   cargarSmtp().catch(() => {});

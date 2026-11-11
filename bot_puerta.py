@@ -8,7 +8,7 @@ la petición caduca a los 2 minutos y 3 fallos seguidos bloquean 15 minutos.
 """
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import alertas
 import cuentas
@@ -78,6 +78,10 @@ def _botones_menu(cuenta, hay_portal):
               {"text": "🔓 Abrir", "callback_data": f"a|{cuenta}"}]]
     if hay_portal:
         filas.append([{"text": "🚪 Abrir portal", "callback_data": f"o|{cuenta}"}])
+    filas.append([{"text": "🔑 Dar un código", "callback_data": f"q|{cuenta}"}])
+    if _modos(cuenta):
+        filas.append([{"text": "🏠 En casa", "callback_data": f"e|{cuenta}|entrada"},
+                      {"text": "🚶 Fuera", "callback_data": f"e|{cuenta}|salida"}])
     fila = [{"text": "🔄 Actualizar", "callback_data": f"p|{cuenta}"}]
     try:
         import camara
@@ -87,6 +91,81 @@ def _botones_menu(cuenta, hay_portal):
         pass
     filas.append(fila)
     return filas
+
+
+def _modos(cuenta):
+    """Reglas de «Cámaras y cerradura» de esa casa ({"entrada": …, "salida": …}) si hay alguna."""
+    with cuentas.en_cuenta(cuenta, "telegram"):
+        auto = nk.cargar_config().get("camaras_auto") or {}
+    return auto if any((auto.get(m) or {}).get("modo") not in (None, "") or (auto.get(m) or {}).get("privacidad")
+                       for m in ("entrada", "salida")) else None
+
+
+def _aplicar_modo(cuenta, u, momento):
+    import camara
+    auto = _modos(cuenta) or {}
+    regla = auto.get(momento) or {}
+    priv = {"apagar": True, "encender": False}.get(regla.get("privacidad"))
+    modo = regla.get("modo")
+    modo = int(modo) if str(modo).lstrip("-").isdigit() else None
+    quien = f"{u.get('nombre') or u['usuario']} (Telegram, «{'En casa' if momento == 'entrada' else 'Fuera'}»)"
+    hechos, fallos = [], []
+    if priv is not None:
+        h, f = camara.aplicar_casa(cuenta, privacidad=priv, solo=auto.get("camaras") or None, quien=quien)
+        hechos += h; fallos += f
+    if modo is not None:
+        h, f = camara.aplicar_casa(cuenta, modo=modo, quien=quien)
+        hechos += h; fallos += f
+    return hechos, fallos
+
+
+# ---------------------------------------------------------------- códigos temporales
+
+DURACIONES = {"2": ("2 horas", 2), "hoy": ("hasta esta noche (23:59)", None), "24": ("24 horas", 24), "72": ("3 días", 72)}
+
+
+def _horas(clave):
+    texto, h = DURACIONES[clave]
+    if h is None:
+        ahora = datetime.now()
+        h = max(0.5, (ahora.replace(hour=23, minute=59, second=0) - ahora).total_seconds() / 3600)
+    return texto, h
+
+
+def _crear_codigo(cuenta, u, clave):
+    """Código temporal de un solo uso por visita, creado desde Telegram. Devuelve (código, hasta, nombre_auth)."""
+    from datetime import timezone
+    texto, horas = _horas(clave)
+    with cuentas.en_cuenta(cuenta, u["usuario"]):
+        cfg = nk.cargar_config()
+        n = cfg["nuki"]
+        nuki = nk.Nuki(n["token"])
+        existentes = nuki.autorizaciones(n["smartlock_id"])
+        codigo = nk.generar_codigo({str(a.get("code")) for a in existentes if a.get("code")} | nk.codigos_usados())
+        persona = {"id": "_telegram", "nombre": u.get("nombre") or u["usuario"]}
+        nombre_auth = (nk.prefijo_invitado(persona) + nk.secrets.token_hex(2))[:20]
+        desde = datetime.now(timezone.utc)
+        hasta = desde + timedelta(hours=horas)
+        nuki.crear_codigo(n["smartlock_id"], nombre_auth, codigo, desde, hasta)
+        hasta_txt = hasta.astimezone().strftime("%d/%m/%Y a las %H:%M")
+        nk.registrar("Código de invitado creado", persona["nombre"], f"Desde Telegram · {texto} · hasta el {hasta_txt}")
+        nk.apuntar_codigo(codigo, {"id": "_telegram", "nombre": f"Invitado de {persona['nombre']} (Telegram)"},
+                          "invitado", nombre_auth, desde, hasta, "Telegram")
+        estado = nk.cargar_json(nk.ruta_estado(), {})
+        estado.setdefault(nk.CLAVE_INVITADOS, []).append({
+            "nombre_auth": nombre_auth, "inquilino": "_telegram", "codigo": codigo, "motivo": "Telegram",
+            "telefono": "", "creado": desde.isoformat(), "hasta": hasta.isoformat()})
+        nk.guardar_json(nk.ruta_estado(), estado)
+        mensaje = cfg.get("mensaje_invitado", nk.MENSAJE_INVITADO).format(
+            nombre=persona["nombre"], codigo=codigo, hasta=hasta_txt, motivo="")
+    return codigo, hasta_txt, nombre_auth, mensaje
+
+
+def _anular_codigo(cuenta, u, nombre_auth):
+    with cuentas.en_cuenta(cuenta, u["usuario"]):
+        cfg = nk.cargar_config()
+        nk.anular_invitado(cfg, nk.Nuki(cfg["nuki"]["token"]), nombre_auth,
+                           motivo_registro="Código de invitado anulado desde Telegram")
 
 
 def _menu(chat, cuenta, nombre_casa, editar=None, cabecera=""):
@@ -224,6 +303,53 @@ def boton(q):
                  else {"text": "📌 No borrar", "callback_data": f"n|{cuenta}|{extra}"})
         return telegram.editar_botones(chat, mid, _cambiar_boton(teclado, dato, nuevo))
 
+    if tipo == "q" and not extra:  # dar un código: elegir duración
+        telegram.responder_boton(ident)
+        return _elegir_duracion(chat, cuenta, nombre_casa)
+
+    if tipo == "q":  # duración elegida: pide PIN
+        if extra not in DURACIONES:
+            return telegram.responder_boton(ident, "Este botón ya no sirve.")
+        if not cuentas.tiene_pin(u["usuario"]):
+            return telegram.responder_boton(
+                ident, "Para dar códigos desde Telegram, primero pon tu PIN en el panel: "
+                       "Ajustes → Comunicación → «La puerta desde Telegram».", alerta=True)
+        telegram.responder_boton(ident)
+        texto, _ = _horas(extra)
+        r = telegram.enviar(chat, f"🔐 Vas a crear un código de «{nombre_casa}» válido {texto}.\n"
+                                  f"Escribe tu PIN para confirmar (caduca en 2 minutos).",
+                            [[{"text": "Cancelar", "callback_data": f"x|{cuenta}"}]])
+        with _cerrojo:
+            PENDIENTES[chat] = {"cuenta": cuenta, "usuario": u["usuario"], "accion": f"codigo:{extra}",
+                                "hasta": time.time() + CADUCA_PIN, "msg": (r or {}).get("message_id"),
+                                "casa": nombre_casa}
+        return
+
+    if tipo == "z":  # anular un código creado desde Telegram
+        try:
+            _anular_codigo(cuenta, u, extra)
+        except Exception as e:
+            return telegram.responder_boton(ident, f"No se pudo: {e}", alerta=True)
+        telegram.responder_boton(ident, "Código anulado")
+        return telegram.editar_texto(chat, mid, (msg.get("text") or "").split("\n")[0] + "\n❌ Anulado: ya no abre.")
+
+    if tipo == "e":  # modo En casa / Fuera
+        if extra not in ("entrada", "salida"):
+            return telegram.responder_boton(ident, "Este botón ya no sirve.")
+        telegram.responder_boton(ident, "Aplicando…")
+
+        def hacer():
+            hechos, fallos = _aplicar_modo(cuenta, u, extra)
+            nombre = "🏠 En casa" if extra == "entrada" else "🚶 Fuera"
+            if not hechos and not fallos:
+                texto = f"{nombre}: las cámaras ya estaban así."
+            else:
+                texto = f"{nombre}:\n" + "\n".join(f"✅ {h}" for h in hechos) + \
+                        ("\n" if hechos and fallos else "") + "\n".join(f"⚠️ {f}" for f in fallos)
+            telegram.enviar(chat, texto)
+        threading.Thread(target=hacer, daemon=True).start()
+        return
+
     if tipo == "k" and not extra:  # elegir cámara
         telegram.responder_boton(ident)
         return _elegir_camara(chat, cuenta, nombre_casa)
@@ -240,6 +366,12 @@ def boton(q):
 
 
 # ---------------------------------------------------------------- cámaras
+
+def _elegir_duracion(chat, cuenta, nombre_casa):
+    botones = [{"text": t, "callback_data": f"q|{cuenta}|{k}"} for k, (t, _) in DURACIONES.items()]
+    return telegram.enviar(chat, f"🔑 {nombre_casa}\n¿Para cuánto tiempo es el código?",
+                           [botones[i:i + 2] for i in range(0, len(botones), 2)])
+
 
 def _elegir_camara(chat, cuenta, nombre_casa):
     import camara
@@ -325,6 +457,17 @@ def mensaje(m, texto, chat):
             return True
         with _cerrojo:
             PENDIENTES.pop(chat, None)
+        if p["accion"].startswith("codigo:"):
+            try:
+                codigo, hasta, nombre_auth, texto_inv = _crear_codigo(p["cuenta"], u, p["accion"].split(":", 1)[1])
+            except Exception as e:
+                telegram.editar_texto(chat, p["msg"], f"⚠️ No se pudo crear el código: {e}")
+                return True
+            telegram.editar_texto(chat, p["msg"], f"🔑 Código creado: {codigo}\nVale hasta el {hasta}.\n"
+                                                  f"Reenvía el mensaje de abajo a quien lo necesite.",
+                                  [[{"text": "❌ Anular este código", "callback_data": f"z|{p['cuenta']}|{nombre_auth}"}]])
+            telegram.enviar(chat, texto_inv)
+            return True
         try:
             _ejecutar(chat, p["cuenta"], u, p["accion"])
             telegram.editar_texto(chat, p["msg"], ACCIONES[p["accion"]][2])
@@ -332,6 +475,14 @@ def mensaje(m, texto, chat):
             telegram.editar_texto(chat, p["msg"], f"⚠️ No se pudo: {e}")
             return True
         _despues(5, _menu, chat, p["cuenta"], p["casa"])
+        return True
+
+    if texto.split("@")[0] in ("/codigo", "/código"):
+        casas = casas_de(chat)
+        if not casas:
+            return False
+        for cuenta, _, nombre_casa in casas:
+            _elegir_duracion(chat, cuenta, nombre_casa)
         return True
 
     if texto.split("@")[0] in ("/camara", "/camaras", "/cámara"):
@@ -358,6 +509,7 @@ def preparar():
     """Pone la orden /puerta en el menú del bot."""
     try:
         telegram._api("setMyCommands", {"commands": [{"command": "puerta", "description": "Estado y control de la puerta"},
-                                                     {"command": "camara", "description": "Ver una cámara ahora"}]})
+                                                     {"command": "camara", "description": "Ver una cámara ahora"},
+                                                     {"command": "codigo", "description": "Dar un código temporal"}]})
     except Exception as e:
         nk.log(f"Telegram: no se pudo poner el menú del bot: {e}")

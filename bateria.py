@@ -160,7 +160,7 @@ def canales_de(av):
     return {"correo", "whatsapp"} if c == "ambos" else {c}
 
 
-def enviar_aviso(cfg, av, asunto, texto, foto=None, video=None, recibos=None, botones=None):
+def enviar_aviso(cfg, av, asunto, texto, foto=None, video=None, recibos=None, botones=None, sin_sonido=False):
     """Envía por los canales elegidos. Devuelve la lista de destinos a los que llegó;
     lanza error solo si no llegó por ninguno. Foto y vídeo solo se adjuntan por Telegram.
     `recibos` (dict) recoge {chat: id_del_mensaje} de las fotos enviadas por Telegram."""
@@ -175,9 +175,10 @@ def enviar_aviso(cfg, av, asunto, texto, foto=None, video=None, recibos=None, bo
             if video:
                 n = telegram.enviar_a_todos(cfg, telegram.enviar_video, video, mensaje)
             elif foto:
-                n = telegram.enviar_a_todos(cfg, telegram.enviar_foto, foto, mensaje, botones, recibos=recibos)
+                n = telegram.enviar_a_todos(cfg, telegram.enviar_foto, foto, mensaje, botones, sin_sonido,
+                                            recibos=recibos)
             else:
-                n = telegram.enviar_a_todos(cfg, telegram.enviar, mensaje, botones)
+                n = telegram.enviar_a_todos(cfg, telegram.enviar, mensaje, botones, sin_sonido)
             enviados.append("Telegram" + (f" ({n})" if n > 1 else ""))
         except Exception as e:
             errores.append(f"Telegram: {e}")

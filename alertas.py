@@ -111,14 +111,14 @@ def validar(datos):
 
 # ---------------------------------------------------------------- envío
 
-def enviar(cfg, tipo, detalle, momento=None, foto=None, recibos=None, botones=None):
+def enviar(cfg, tipo, detalle, momento=None, foto=None, recibos=None, botones=None, sin_sonido=False):
     """Envía un aviso del tipo dado. Devuelve los destinos o lanza error."""
     a = ajustes(cfg)
     momento = momento or datetime.now().astimezone()
     titulo = TIPOS.get(tipo, tipo)
     texto = f"{detalle}\n{momento:%d/%m/%Y %H:%M:%S}"
     destinos = bateria.enviar_aviso(cfg, a["destino"], f"{titulo} · {bateria.nombre_cuenta()}", texto, foto=foto,
-                                      recibos=recibos, botones=botones)
+                                      recibos=recibos, botones=botones, sin_sonido=sin_sonido)
     nk.registrar("Aviso enviado", titulo, f"{detalle} → {', '.join(destinos)}")
     return destinos
 
