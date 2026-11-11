@@ -777,6 +777,11 @@
             <button type="button" onclick="probarAvisoPuerta(this)"><svg class="i"><use href="#i-whatsapp"/></svg>Guardar y enviar aviso de prueba</button>
           </div>
         </div>
+        <div class="card" data-grupo="comunicacion" id="cardTgPuerta">
+          <div class="cab" style="margin-bottom:0"><h2>La puerta desde Telegram</h2><span class="chip" id="tgPuertaChip"></span></div>
+          <p class="muted peq" style="margin:8px 0 12px">Escribe <b>/puerta</b> al bot para ver el estado, cerrar con llave o abrir. Para <b>abrir</b> te pedirá tu PIN (4 a 8 cifras), que es solo tuyo: cada persona del panel pone el suyo.</p>
+          <div id="tgPuerta"></div>
+        </div>
         <div class="card" data-grupo="comunicacion" id="cardMensajes">
           <h2>WhatsApp</h2>
           <label for="proveedor">Forma de envío</label>
@@ -2033,14 +2038,21 @@ function pintarTgAvisos() {
             ${x.yo || admin ? `<a href="#" style="margin-left:4px" title="Quitar" aria-label="Quitar a ${esc(x.usuario)}" onclick="quitarTgAviso('${esc(x.usuario)}'); return false">✕</a>` : ""}</span>`).join("")
             : '<span class="chip aviso">Nadie vinculado</span>'}
          <button type="button" onclick="abrirTelegram('_avisos')">${ico("telegram")}${CONFIG.telegram_avisos_yo ? "Volver a vincular el mío" : "Vincular mi Telegram"}</button></div>
-         <div class="ayuda">Cada persona que entra al panel vincula su propio Telegram y todos reciben los avisos.</div>
-         ${CONFIG.telegram_avisos_yo ? `<div class="tg-pin">
-           <div class="tg-estado" style="flex-wrap:wrap"><span class="chip${CONFIG.telegram_pin_yo ? " on" : ""}">🔐 ${CONFIG.telegram_pin_yo ? "PIN puesto" : "Sin PIN"}</span>
-             <button type="button" onclick="abrirPinTg()">${CONFIG.telegram_pin_yo ? "Cambiar PIN" : "Poner PIN"}</button>
-             ${CONFIG.telegram_pin_yo ? '<button type="button" class="peligro" onclick="quitarPinTg(this)">Quitar PIN</button>' : ""}</div>
-           <div class="ayuda">En Telegram, escribe <b>/puerta</b> para ver el estado y cerrar con llave. Para <b>abrir</b> desde allí hace falta tu PIN (4 a 8 cifras); sin PIN, desde Telegram no se puede abrir.</div>
-         </div>` : ""}`;
+         <div class="ayuda">Cada persona que entra al panel vincula su propio Telegram y todos reciben los avisos.</div>`;
   });
+  if ($("tgPuerta")) {
+    const yo = CONFIG.telegram_avisos_yo, pin = CONFIG.telegram_pin_yo;
+    $("tgPuertaChip").textContent = !t.configurado ? "Sin bot" : !yo ? "Telegram sin vincular" : pin ? "PIN puesto" : "Sin PIN";
+    $("tgPuertaChip").className = "chip" + (yo && pin ? " on" : "");
+    $("tgPuerta").innerHTML = !t.configurado
+      ? '<div class="ayuda">⚠️ El administrador tiene que configurar el bot de Telegram (más abajo, «Telegram (bot)»).</div>'
+      : !yo
+      ? `<div class="ayuda">Primero vincula tu Telegram para los avisos.</div>
+         <div class="acciones"><button type="button" onclick="abrirTelegram('_avisos')">${ico("telegram")}Vincular mi Telegram</button></div>`
+      : `<div class="acciones"><button type="button" class="principal" onclick="abrirPinTg()">🔐 ${pin ? "Cambiar mi PIN" : "Poner mi PIN"}</button>
+           ${pin ? '<button type="button" class="peligro" onclick="quitarPinTg(this)">Quitar PIN</button>' : ""}</div>
+         <div class="ayuda">${pin ? "Ya puedes abrir desde Telegram." : "Sin PIN, desde Telegram puedes ver el estado y cerrar con llave, pero no abrir."}</div>`;
+  }
   if ($("tgBotChip")) {
     $("tgBotChip").textContent = t.configurado ? (t.bot ? "@" + t.bot : "Configurado") : "Sin configurar";
     $("tgBotChip").className = "chip" + (t.configurado ? " on" : "");

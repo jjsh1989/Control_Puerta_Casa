@@ -3,7 +3,7 @@
 Quién puede: solo los usuarios del panel que han vinculado su Telegram para los avisos de esa casa
 (los invitados que reciben códigos por Telegram no). Ver el estado y cerrar con llave no piden nada
 más; abrir la puerta o el portal pide además el PIN que cada usuario pone en el panel
-(Ajustes → Avisos → Telegram). El PIN se escribe en el chat, el bot borra ese mensaje enseguida,
+(Ajustes → Comunicación → «La puerta desde Telegram»). El PIN se escribe en el chat, el bot borra ese mensaje enseguida,
 la petición caduca a los 2 minutos y 3 fallos seguidos bloquean 15 minutos.
 """
 import threading
@@ -168,7 +168,7 @@ def boton(q):
         accion = "abrir" if tipo == "a" else "portal"
         if not cuentas.tiene_pin(u["usuario"]):
             return telegram.responder_boton(
-                ident, "Para abrir desde Telegram, primero pon tu PIN en el panel: Ajustes → Avisos → Telegram.",
+                ident, "Para abrir desde Telegram, primero pon tu PIN en el panel: Ajustes → Comunicación → «La puerta desde Telegram».",
                 alerta=True)
         telegram.responder_boton(ident)
         que = "la puerta" if accion == "abrir" else "el portal"

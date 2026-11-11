@@ -360,7 +360,7 @@ def comprobar_pin(usuario, pin):
     import time
     u = buscar_usuario(usuario)
     if not u or not u.get("pin_tg"):
-        return False, "No tienes PIN puesto. Ponlo en el panel: Ajustes → Avisos → Telegram."
+        return False, "No tienes PIN puesto. Ponlo en el panel: Ajustes → Comunicación → «La puerta desde Telegram»."
     fallos, hasta = _FALLOS_PIN.get(usuario, [0, 0])
     if hasta > time.time():
         return False, f"Demasiados intentos. Prueba de nuevo dentro de {int((hasta - time.time()) // 60) + 1} min."
