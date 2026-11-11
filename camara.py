@@ -825,7 +825,8 @@ def foto_cercana(sn, segundos=180):
 
 
 def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=None, sn=None, con_clip=True):
-    """Envía el aviso con la foto (Telegram) o el enlace (WhatsApp/correo) y después, en segundo plano, el clip."""
+    """Envía el aviso con la foto (Telegram) o el enlace (WhatsApp/correo) y después, en segundo plano, el clip.
+    En Telegram el clip sustituye a la foto en el mismo mensaje, para que cada aviso sea un solo mensaje."""
     import alertas
     import bateria
     cuenta = cuentas.cuenta_actual()
@@ -846,7 +847,10 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
         guardar_evento(cuenta, ev)
     enlace = url_evento(ident)
     texto_extra = f"\n📷 Ver foto y clip: {enlace}" if enlace else ""
-    destinos = alertas.enviar(cfg, tipo, detalle + texto_extra, momento, foto=foto)
+    recibos = {}  # {chat de Telegram: id del mensaje con la foto}
+    destinos = alertas.enviar(cfg, tipo, detalle + texto_extra, momento, foto=foto, recibos=recibos)
+    titulo = f"{alertas.TIPOS.get(tipo, tipo)} · {bateria.nombre_cuenta()}"
+    pie = f"{titulo}\n\n{detalle}{texto_extra}\n{momento:%d/%m/%Y %H:%M:%S}"
     if con_clip and sn and CLIENTE.driver:
         def grabar():
             mp4 = CLIENTE.clip(sn)
@@ -858,12 +862,25 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
                 c = nk.cargar_config()
                 dest = alertas.ajustes(c)["destino"]
                 if "telegram" in bateria.canales_de(dest) and c.get("telegram_avisos"):
-                    try:
-                        import telegram
-                        telegram.enviar_a_todos(c, telegram.enviar_video, mp4,
-                                                f"🎥 Clip · {alertas.TIPOS.get(tipo, tipo)} · {momento:%H:%M:%S}")
-                    except Exception as e:
-                        nk.registrar("Clip no enviado", "Telegram", str(e), ok=False)
+                    import telegram
+                    sueltos = []  # chats donde no había foto que cambiar: el clip va aparte
+                    for chat in telegram.chats_avisos(c):
+                        if chat in recibos:
+                            try:
+                                telegram.cambiar_a_video(chat, recibos[chat], mp4, f"🎥 {pie}")
+                                continue
+                            except Exception as e:
+                                nk.log(f"Telegram: no se pudo cambiar la foto por el clip ({e}); va aparte")
+                        sueltos.append(chat)
+                    errores = []
+                    for chat in sueltos:
+                        try:
+                            telegram.enviar_video(chat, mp4,
+                                                  f"🎥 Clip · {alertas.TIPOS.get(tipo, tipo)} · {momento:%H:%M:%S}")
+                        except Exception as e:
+                            errores.append(str(e))
+                    if errores:
+                        nk.registrar("Clip no enviado", "Telegram", "; ".join(errores), ok=False)
         threading.Thread(target=grabar, daemon=True).start()
     return destinos
 

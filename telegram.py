@@ -121,14 +121,17 @@ def chats_avisos(cfg):
     return [x["chat"] for x in avisos_de(cfg).values() if x.get("chat")]
 
 
-def enviar_a_todos(cfg, funcion, *args):
-    """Envía a todos los Telegram de avisos. Devuelve cuántos llegaron; lanza error si ninguno."""
+def enviar_a_todos(cfg, funcion, *args, recibos=None):
+    """Envía a todos los Telegram de avisos. Devuelve cuántos llegaron; lanza error si ninguno.
+    Si se pasa `recibos` (dict), guarda ahí {chat: id_del_mensaje} de los que llegaron."""
     chats, errores, ok = chats_avisos(cfg), [], 0
     if not chats:
         raise ErrorTelegram("nadie ha vinculado su Telegram para los avisos (botón «Vincular mi Telegram»).")
     for chat in chats:
         try:
-            funcion(chat, *args)
+            r = funcion(chat, *args)
+            if recibos is not None and isinstance(r, dict) and r.get("message_id"):
+                recibos[chat] = r["message_id"]
             ok += 1
         except Exception as e:
             errores.append(str(e))
@@ -140,16 +143,23 @@ def enviar_a_todos(cfg, funcion, *args):
 # ---------------------------------------------------------------- envío
 
 def enviar(chat, texto):
-    _api("sendMessage", {"chat_id": chat, "text": texto, "disable_web_page_preview": True})
+    return _api("sendMessage", {"chat_id": chat, "text": texto, "disable_web_page_preview": True})
 
 
 def enviar_foto(chat, contenido, texto=""):
-    _api("sendPhoto", {"chat_id": chat, "caption": texto[:1000]}, ("photo", "foto.jpg", contenido, "image/jpeg"), timeout=60)
+    return _api("sendPhoto", {"chat_id": chat, "caption": texto[:1000]}, ("photo", "foto.jpg", contenido, "image/jpeg"), timeout=60)
 
 
 def enviar_video(chat, contenido, texto=""):
-    _api("sendVideo", {"chat_id": chat, "caption": texto[:1000], "supports_streaming": "true"},
+    return _api("sendVideo", {"chat_id": chat, "caption": texto[:1000], "supports_streaming": "true"},
          ("video", "clip.mp4", contenido, "video/mp4"), timeout=120)
+
+
+def cambiar_a_video(chat, mensaje, contenido, texto=""):
+    """Convierte un mensaje ya enviado (la foto del aviso) en el vídeo del clip, en el mismo mensaje."""
+    medio = {"type": "video", "media": "attach://clip", "caption": texto[:1000], "supports_streaming": True}
+    return _api("editMessageMedia", {"chat_id": chat, "message_id": mensaje, "media": json.dumps(medio)},
+                ("clip", "clip.mp4", contenido, "video/mp4"), timeout=120)
 
 
 # ---------------------------------------------------------------- vinculación
