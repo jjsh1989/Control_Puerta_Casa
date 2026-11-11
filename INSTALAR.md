@@ -66,6 +66,8 @@ cd /opt/puerta
 ```
 Publica el panel en `https://puerta.<tu-red>.ts.net` con certificado HTTPS válido, solo para los dispositivos de tu red Tailscale, y guarda esa dirección en `.env` (`PANEL_URL_PUBLICA`) para que los enlaces de los avisos funcionen.
 
+Opcional: si tienes un dominio propio que redirige al panel (por ejemplo, una página que solo te lleva al panel cuando estás en Tailscale), ponlo en `.env` como `PANEL_URL_ENLACES=https://tu-dominio` y los botones «📹 En directo» de Telegram lo usarán. Esa página debe pasar al panel lo que va tras `#` (`#directo=…`).
+
 Ábrela, escribe el **código de instalación** y crea tu usuario administrador.
 
 En el iPhone: Safari → Compartir → **Añadir a pantalla de inicio**, y se abre como una app.

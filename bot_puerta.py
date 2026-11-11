@@ -1,4 +1,4 @@
-"""La puerta desde Telegram: la orden /puerta, los botones de los avisos y el PIN para abrir.
+"""La puerta desde Telegram: las órdenes /puerta y /camara, los botones de los avisos y el PIN para abrir.
 
 Quién puede: solo los usuarios del panel que han vinculado su Telegram para los avisos de esa casa
 (los invitados que reciben códigos por Telegram no). Ver el estado y cerrar con llave no piden nada
@@ -78,7 +78,14 @@ def _botones_menu(cuenta, hay_portal):
               {"text": "🔓 Abrir", "callback_data": f"a|{cuenta}"}]]
     if hay_portal:
         filas.append([{"text": "🚪 Abrir portal", "callback_data": f"o|{cuenta}"}])
-    filas.append([{"text": "🔄 Actualizar", "callback_data": f"p|{cuenta}"}])
+    fila = [{"text": "🔄 Actualizar", "callback_data": f"p|{cuenta}"}]
+    try:
+        import camara
+        if camara.camaras_de(cuenta):
+            fila.append({"text": "📷 Cámaras", "callback_data": f"k|{cuenta}"})
+    except Exception:
+        pass
+    filas.append(fila)
     return filas
 
 
@@ -217,7 +224,73 @@ def boton(q):
                  else {"text": "📌 No borrar", "callback_data": f"n|{cuenta}|{extra}"})
         return telegram.editar_botones(chat, mid, _cambiar_boton(teclado, dato, nuevo))
 
+    if tipo == "k" and not extra:  # elegir cámara
+        telegram.responder_boton(ident)
+        return _elegir_camara(chat, cuenta, nombre_casa)
+
+    if tipo in ("k", "v"):  # foto al momento / clip de una cámara
+        if camara.cuenta_de(extra) != cuenta or extra not in camara.CLIENTE.dispositivos:
+            return telegram.responder_boton(ident, "Esa cámara no es de esta casa.", alerta=True)
+        nombre_cam = camara.CLIENTE.dispositivos[extra].get("nombre", "la cámara")
+        telegram.responder_boton(ident, f"{'📷 Pidiendo una foto' if tipo == 'k' else '🎥 Grabando 15 s'} a «{nombre_cam}»…")
+        threading.Thread(target=_mandar_camara, args=(chat, cuenta, u, extra, tipo == "v"), daemon=True).start()
+        return
+
     telegram.responder_boton(ident, "Este botón ya no sirve.")
+
+
+# ---------------------------------------------------------------- cámaras
+
+def _elegir_camara(chat, cuenta, nombre_casa):
+    import camara
+    sns = camara.camaras_de(cuenta)
+    if not sns:
+        return telegram.enviar(chat, f"🏠 {nombre_casa}\nNo hay cámaras en esta casa.")
+    botones = [{"text": "📷 " + camara.CLIENTE.dispositivos.get(sn, {}).get("nombre", sn), "callback_data": f"k|{cuenta}|{sn}"}
+               for sn in sns]
+    filas = [botones[i:i + 2] for i in range(0, len(botones), 2)]
+    return telegram.enviar(chat, f"🏠 {nombre_casa}\n¿Qué cámara quieres ver?", filas)
+
+
+def _botones_camara(cuenta, sn):
+    import camara
+    filas = [[{"text": "🔄 Otra foto", "callback_data": f"k|{cuenta}|{sn}"},
+              {"text": "🎥 Clip 15 s", "callback_data": f"v|{cuenta}|{sn}"}]]
+    fila = []
+    base = camara.url_enlaces()
+    if base.startswith("https://"):
+        fila.append({"text": "📹 En directo", "url": f"{base}/#directo={sn}"})
+    fila.append({"text": "📷 Otra cámara", "callback_data": f"k|{cuenta}"})
+    filas.append(fila)
+    return filas
+
+
+def _mandar_camara(chat, cuenta, u, sn, con_video):
+    import camara
+    nombre_cam = camara.CLIENTE.dispositivos.get(sn, {}).get("nombre", sn)
+    with cuentas.en_cuenta(cuenta, u["usuario"]):
+        nk.registrar("Clip pedido desde Telegram" if con_video else "Foto pedida desde Telegram",
+                     u.get("nombre") or u["usuario"], nombre_cam)
+    try:
+        if con_video:
+            mp4 = camara.CLIENTE.clip(sn)
+            if mp4:
+                telegram._api("sendVideo", {"chat_id": chat, "caption": f"🎥 {nombre_cam} · {datetime.now():%H:%M:%S}",
+                                            "supports_streaming": "true",
+                                            "reply_markup": {"inline_keyboard": _botones_camara(cuenta, sn)}},
+                              ("video", "clip.mp4", mp4, "video/mp4"), timeout=120)
+                return
+        else:
+            foto = camara.foto_ahora(sn)
+            if foto:
+                telegram.enviar_foto(chat, foto, f"📷 {nombre_cam} · {datetime.now():%H:%M:%S}",
+                                     _botones_camara(cuenta, sn))
+                return
+        telegram.enviar(chat, f"⚠️ «{nombre_cam}» no ha respondido. Puede que esté apagada, en modo privacidad, "
+                              f"sin conexión o ya grabando otro clip. Prueba otra vez en un momento.",
+                        _botones_camara(cuenta, sn))
+    except Exception as e:
+        nk.log(f"Telegram: cámara: {e}")
 
 
 # ---------------------------------------------------------------- mensajes escritos
@@ -261,6 +334,14 @@ def mensaje(m, texto, chat):
         _despues(5, _menu, chat, p["cuenta"], p["casa"])
         return True
 
+    if texto.split("@")[0] in ("/camara", "/camaras", "/cámara"):
+        casas = casas_de(chat)
+        if not casas:
+            return False
+        for cuenta, _, nombre_casa in casas:
+            _elegir_camara(chat, cuenta, nombre_casa)
+        return True
+
     if texto.split("@")[0] in ("/puerta", "/start", "/menu"):
         casas = casas_de(chat)
         if not casas:
@@ -276,6 +357,7 @@ def mensaje(m, texto, chat):
 def preparar():
     """Pone la orden /puerta en el menú del bot."""
     try:
-        telegram._api("setMyCommands", {"commands": [{"command": "puerta", "description": "Estado y control de la puerta"}]})
+        telegram._api("setMyCommands", {"commands": [{"command": "puerta", "description": "Estado y control de la puerta"},
+                                                     {"command": "camara", "description": "Ver una cámara ahora"}]})
     except Exception as e:
         nk.log(f"Telegram: no se pudo poner el menú del bot: {e}")

@@ -49,6 +49,7 @@ The UI and docs are in Spanish; issues and pull requests in English are welcome 
 **La puerta desde Telegram** (solo usuarios del panel con su Telegram vinculado; los invitados no)
 - Escribe **/puerta** al bot: estado de la cerradura, puerta y batería, y botones para **cerrar con llave**, **abrir** y abrir el **portal** (si hay Opener).
 - **Abrir pide un PIN** que cada usuario pone en el panel (Ajustes → Comunicación → «La puerta desde Telegram», con su contraseña). El bot borra el mensaje del PIN, la petición caduca a los 2 minutos y 3 fallos seguidos bloquean 15 minutos. Sin PIN no se puede abrir desde Telegram.
+- Escribe **/camara** para elegir una cámara y recibir una **foto al momento**, con botones para otra foto, un **clip de 15 s** o el **directo**.
 - Todo queda en el Historial y los demás que reciben avisos se enteran («Fulano ha abierto la puerta desde Telegram»).
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)

@@ -446,6 +446,12 @@ def url_panel():
     return (os.environ.get("PANEL_URL_PUBLICA") or cuentas.leer_sistema().get("url_publica") or "").rstrip("/")
 
 
+def url_enlaces():
+    """Dirección para los botones de Telegram (p. ej. un dominio propio que redirige al panel);
+    si no hay, la del panel."""
+    return (os.environ.get("PANEL_URL_ENLACES") or "").rstrip("/") or url_panel()
+
+
 def url_evento(ident):
     base = url_panel()
     return f"{base}/#evento={ident}" if base else ""
@@ -487,11 +493,24 @@ def botones_aviso(cuenta, ident, sn, tipo):
         fila1.append(b("📌 Guardado · quitar", f"m|{cuenta}|{ident}") if e.get("guardar")
                      else b("📌 No borrar", f"n|{cuenta}|{ident}"))
     fila2.append(b("🚪 Puerta", f"p|{cuenta}"))
-    base = url_panel()
+    base = url_enlaces()
     if sn and base.startswith("https://"):
         fila2.append({"text": "📹 En directo", "url": f"{base}/#directo={sn}"})
     filas = [[x for x in f if x] for f in (fila1, fila2)]
     return [f for f in filas if f]
+
+
+def foto_ahora(sn, segundos=3):
+    """Foto en este momento: graba unos segundos del directo y se queda con el último fotograma."""
+    mp4 = CLIENTE.clip(sn, segundos)
+    if not mp4:
+        return None
+    with tempfile.TemporaryDirectory() as d:
+        entrada, salida = Path(d) / "c.mp4", Path(d) / "f.jpg"
+        entrada.write_bytes(mp4)
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(entrada), "-update", "1", "-q:v", "3",
+                            str(salida)], capture_output=True, timeout=30)
+        return salida.read_bytes() if r.returncode == 0 and salida.exists() else None
 
 
 def _portada(foto):

@@ -23,6 +23,7 @@ services:
       EUFY_URL: ws://eufy:3000
       EUFY_CONTENEDOR: puerta-eufy
       PANEL_URL_PUBLICA: ${PANEL_URL_PUBLICA:-}
+      PANEL_URL_ENLACES: ${PANEL_URL_ENLACES:-}
     volumes:
       - ./datos:/app/datos
     secrets:
