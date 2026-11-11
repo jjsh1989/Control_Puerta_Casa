@@ -953,11 +953,15 @@
       <div class="card solo-admin" data-grupo="casas" id="cardCopias">
         <div class="cab" style="margin-bottom:0"><h2>Copia de seguridad</h2><span class="chip" id="cpChip"></span></div>
         <p class="muted peq" style="margin:8px 0 12px">Guarda los ajustes de todas las casas (códigos, personas, usuarios, Telegram, cámaras, claves de la bóveda…), pero no las fotos ni los clips.
-          Va cifrada con una contraseña tuya: se guardan las 4 últimas en el servidor y cada una te llega por Telegram, para tenerla fuera de casa.</p>
+          Va cifrada con una contraseña tuya: en el servidor se conservan las que elijas y cada una te llega por Telegram, para tenerla fuera de casa.</p>
         <div id="cpEstado" class="ayuda"></div>
         <div class="rejilla">
           <div><label for="cp_dia">Cada semana, el</label><select id="cp_dia"></select></div>
           <div><label for="cp_hora">A las</label><input id="cp_hora" type="time"></div>
+          <div><label for="cp_guardar">Conservar</label><select id="cp_guardar">
+            <option value="1">La última</option><option value="2">Las 2 últimas</option><option value="3">Las 3 últimas</option>
+            <option value="4">Las 4 últimas</option><option value="5">Las 5 últimas</option></select>
+            <div class="ayuda">Las más antiguas se borran solas del servidor (las que te llegaron por Telegram siguen allí).</div></div>
         </div>
         <label class="interruptor" style="margin-top:8px"><input type="checkbox" id="cp_activo"> Hacer la copia automáticamente</label>
         <div class="acciones" style="margin-top:12px">
@@ -965,6 +969,8 @@
           <button type="button" onclick="abrirClaveCopias()">🔑 <span id="cpBotonClave">Poner contraseña</span></button>
           <button type="button" onclick="copiaAhora(this)">💾 Hacer copia ahora</button>
         </div>
+        <h3>Copias guardadas</h3>
+        <div id="cpLista"></div>
         <div class="ayuda">Para recuperarla en un servidor nuevo, mira «Recuperar una copia» en INSTALAR.md. <b>Sin la contraseña no se puede recuperar</b>: apúntala en un sitio seguro.</div>
       </div>
       <div class="card solo-admin" data-grupo="casas" id="cardCasas">
@@ -2138,7 +2144,12 @@ async function resumenAhora(b) {
 const DIAS_CP = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 function pintarCopias(c) {
   if (!$("cp_dia").options.length) $("cp_dia").innerHTML = DIAS_CP.map((d, i) => `<option value="${i}">${d}</option>`).join("");
-  $("cp_dia").value = c.dia; $("cp_hora").value = c.hora; $("cp_activo").checked = c.activo;
+  $("cp_dia").value = c.dia; $("cp_hora").value = c.hora; $("cp_activo").checked = c.activo; $("cp_guardar").value = c.guardar;
+  $("cpLista").innerHTML = (c.lista || []).length ? c.lista.map(x => `<div class="fila-seccion"><span class="nom">💾 ${x.fecha ? esc(new Date(x.fecha).toLocaleString("es-ES", {dateStyle: "medium", timeStyle: "short"})) : esc(x.nombre)}</span>
+      <span class="chip">${esc(x.tamano)}</span>
+      <div class="herramientas"><button type="button" title="Enviármela por Telegram" onclick="reenviarCopia('${esc(x.nombre)}', this)">${ico("telegram")}Enviar</button>
+        <button type="button" class="peligro" title="Borrar" onclick="borrarCopia('${esc(x.nombre)}', this)">Borrar</button></div></div>`).join("")
+    : '<div class="muted peq">Todavía no hay copias en el servidor.</div>';
   $("cpBotonClave").textContent = c.clave ? "Cambiar contraseña" : "Poner contraseña";
   $("cpChip").textContent = !c.clave ? "Sin contraseña" : c.activo ? "Semanal" : "Desactivada";
   $("cpChip").className = "chip" + (c.clave && c.activo ? " on" : c.error ? " aviso" : "");
@@ -2148,9 +2159,19 @@ function pintarCopias(c) {
 async function cargarCopias() { pintarCopias((await api("POST", "/api/admin/copias", {})).resultado); }
 async function guardarCopias(b) {
   await conBoton(b, async () => {
-    pintarCopias((await api("POST", "/api/admin/copias", {activo: $("cp_activo").checked, dia: +$("cp_dia").value, hora: $("cp_hora").value})).resultado);
+    const quedan = +$("cp_guardar").value, hay = document.querySelectorAll("#cpLista .fila-seccion").length;
+    if (hay > quedan && !await confirmar(`Se borrarán del servidor las ${hay - quedan} copia${hay - quedan === 1 ? "" : "s"} más antigua${hay - quedan === 1 ? "" : "s"}.`,
+        {titulo: "Conservar menos copias", boton: "Guardar y borrar", peligro: true})) return;
+    pintarCopias((await api("POST", "/api/admin/copias", {activo: $("cp_activo").checked, dia: +$("cp_dia").value, hora: $("cp_hora").value, guardar: quedan})).resultado);
     aviso("Guardado");
   });
+}
+async function borrarCopia(nombre, b) {
+  if (!await confirmar("Se borrará esta copia del servidor. Si te llegó por Telegram, esa sigue allí.", {titulo: "Borrar copia", boton: "Borrar", peligro: true})) return;
+  await conBoton(b, async () => { pintarCopias((await api("POST", "/api/admin/copias", {borrar: nombre})).resultado); aviso("Copia borrada"); });
+}
+async function reenviarCopia(nombre, b) {
+  await conBoton(b, async () => { pintarCopias((await api("POST", "/api/admin/copias", {reenviar: nombre})).resultado); aviso("Enviada por Telegram"); });
 }
 function abrirClaveCopias() { ["cpClave", "cpClave2", "cpMiPass"].forEach(i => $(i).value = ""); $("dlgClaveCopias").showModal(); $("cpClave").focus(); }
 async function guardarClaveCopias(ev) {

@@ -5,7 +5,7 @@ de las cámaras, y la clave maestra de la bóveda. Todo va en un único archivo 
 contraseña de copia que pone el administrador (scrypt + Fernet/AES). Sin esa contraseña la copia
 no sirve de nada; con ella se recupera todo en un servidor nuevo.
 
-Dónde va: se guardan las 4 últimas en datos/copias/ y cada una se manda por Telegram a los
+Dónde va: se guardan las últimas (1 a 5, se elige; por defecto 4) en datos/copias/ y cada una se manda por Telegram a los
 administradores que reciben avisos (así queda fuera del servidor). Si una copia falla, avisa.
 
 Recuperar (en el servidor nuevo, con el panel parado y desde la carpeta del panel):
@@ -26,7 +26,8 @@ CARPETA = Path(__file__).resolve().parent
 DATOS = CARPETA / "datos"
 CARPETA_COPIAS = DATOS / "copias"
 CABECERA = b"LSLAB-COPIA-1\n"
-GUARDAR = 4
+GUARDAR = 4  # cuántas se conservan si no se elige otra cosa
+OPCIONES_GUARDAR = (1, 2, 3, 4, 5)
 EXCLUIR = {"camara", "copias", "importar"}
 CLAVE_BOVEDA = "copia_clave"  # en la bóveda de _sistema: la clave derivada (no la contraseña)
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -44,8 +45,50 @@ def ajustes():
     import cuentas
     a = cuentas.leer_sistema().get("copias") or {}
     return {"activo": bool(a.get("activo")), "dia": int(a.get("dia", 6)), "hora": a.get("hora") or "03:30",
+            "guardar": int(a.get("guardar") or GUARDAR),
             "ultima": a.get("ultima"), "error": a.get("error"), "tamano": a.get("tamano"),
-            "clave": bool(cuentas.boveda_leer(CLAVE_BOVEDA, cuentas.CUENTA_SISTEMA))}
+            "clave": bool(cuentas.boveda_leer(CLAVE_BOVEDA, cuentas.CUENTA_SISTEMA)),
+            "lista": listar()}
+
+
+def listar():
+    """Copias guardadas en el servidor, de la más nueva a la más vieja."""
+    if not CARPETA_COPIAS.exists():
+        return []
+    salida = []
+    for p in sorted(CARPETA_COPIAS.glob("copia-panel-*.lslab"), reverse=True):
+        try:
+            fecha = datetime.strptime(p.stem[len("copia-panel-"):], "%Y%m%d-%H%M").astimezone().isoformat()
+        except ValueError:
+            fecha = None
+        salida.append({"nombre": p.name, "fecha": fecha, "tamano": f"{p.stat().st_size / 1024:.0f} KB"})
+    return salida
+
+
+def _ruta(nombre):
+    p = CARPETA_COPIAS / str(nombre or "")
+    if p.parent != CARPETA_COPIAS or not p.name.startswith("copia-panel-") or p.suffix != ".lslab" or not p.exists():
+        raise RuntimeError("Esa copia no existe.")
+    return p
+
+
+def borrar(nombre):
+    _ruta(nombre).unlink()
+
+
+def reenviar(nombre):
+    p = _ruta(nombre)
+    n = _mandar_por_telegram(p.name, p.read_bytes())
+    if not n:
+        raise RuntimeError("No se pudo enviar: ningún administrador tiene su Telegram vinculado para los avisos.")
+    return n
+
+
+def _recortar():
+    """Borra las copias que sobran según cuántas se quieren conservar."""
+    guardar = ajustes()["guardar"]
+    for viejo in sorted(CARPETA_COPIAS.glob("copia-panel-*.lslab"))[:-guardar] if CARPETA_COPIAS.exists() else []:
+        viejo.unlink()
 
 
 def _guardar_ajustes(**cambios):
@@ -57,8 +100,12 @@ def _guardar_ajustes(**cambios):
     cuentas.guardar_sistema(s)
 
 
-def poner_ajustes(activo=None, dia=None, hora=None):
+def poner_ajustes(activo=None, dia=None, hora=None, guardar=None):
     cambios = {}
+    if guardar is not None:
+        if int(guardar) not in OPCIONES_GUARDAR:
+            raise RuntimeError("Elige cuántas copias conservar: de 1 a 5.")
+        cambios["guardar"] = int(guardar)
     if activo is not None:
         if activo and not ajustes()["clave"]:
             raise RuntimeError("Pon primero la contraseña de las copias.")
@@ -71,6 +118,8 @@ def poner_ajustes(activo=None, dia=None, hora=None):
         datetime.strptime(hora, "%H:%M")
         cambios["hora"] = hora
     _guardar_ajustes(**cambios)
+    if "guardar" in cambios:
+        _recortar()
 
 
 def poner_clave(password):
@@ -115,8 +164,7 @@ def hacer_copia(quien="automático"):
     CARPETA_COPIAS.mkdir(parents=True, exist_ok=True)
     (CARPETA_COPIAS / nombre).write_bytes(contenido)
     os.chmod(CARPETA_COPIAS / nombre, 0o600)
-    for viejo in sorted(CARPETA_COPIAS.glob("copia-panel-*.lslab"))[:-GUARDAR]:
-        viejo.unlink()
+    _recortar()
     enviados = _mandar_por_telegram(nombre, contenido)
     tam = f"{len(contenido) / 1024:.0f} KB"
     _guardar_ajustes(ultima=datetime.now().astimezone().isoformat(timespec="seconds"), error=None, tamano=tam)

@@ -131,7 +131,7 @@ Ajustes → **Comunicación** → *Avisos*: activa los que quieras (código inco
 
 ## 8b. Copia de seguridad y cómo recuperarla
 
-En **Ajustes → Casas → Copia de seguridad** pon una contraseña de copias (apúntala en un sitio seguro) y activa la copia semanal. Cada copia es un archivo `copia-panel-AAAAMMDD-HHMM.lslab` cifrado: se guardan las 4 últimas en `datos/copias/` y te llega por Telegram. No incluye fotos ni clips, ni la sesión de WhatsApp (habrá que volver a vincularlo).
+En **Ajustes → Casas → Copia de seguridad** pon una contraseña de copias (apúntala en un sitio seguro) y activa la copia semanal. Cada copia es un archivo `copia-panel-AAAAMMDD-HHMM.lslab` cifrado: se guardan las últimas (de 1 a 5, tú eliges; las más antiguas se borran solas) en `datos/copias/` y te llega por Telegram. No incluye fotos ni clips, ni la sesión de WhatsApp (habrá que volver a vincularlo).
 
 Para recuperarla en un servidor nuevo: instala el panel (pasos 1 a 3) **sin arrancarlo**, copia el archivo `.lslab` a `/opt/puerta/` y ejecuta:
 ```bash

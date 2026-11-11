@@ -1004,8 +1004,19 @@ class Manejador(BaseHTTPRequestHandler):
                     raise RuntimeError("Tu contraseña del panel no es correcta.")
                 copias.poner_clave(datos["password"])
                 nk.registrar("Contraseña de las copias puesta", s.get("nombre") or s["usuario"], "")
-            if any(k in datos for k in ("activo", "dia", "hora")):
-                copias.poner_ajustes(datos.get("activo"), datos.get("dia"), datos.get("hora"))
+            if any(k in datos for k in ("activo", "dia", "hora", "guardar")):
+                antes = len(copias.listar())
+                copias.poner_ajustes(datos.get("activo"), datos.get("dia"), datos.get("hora"), datos.get("guardar"))
+                borradas = antes - len(copias.listar())
+                if borradas > 0:
+                    nk.registrar("Copias de seguridad borradas", s.get("nombre") or s["usuario"],
+                                 f"{borradas} (se conservan {datos.get('guardar')})")
+            if datos.get("borrar"):
+                copias.borrar(datos["borrar"])
+                nk.registrar("Copia de seguridad borrada", s.get("nombre") or s["usuario"], str(datos["borrar"]))
+            if datos.get("reenviar"):
+                n = copias.reenviar(datos["reenviar"])
+                return self._ok({"enviados": n, **copias.ajustes()})
             if datos.get("hacer"):
                 return self._ok({"texto": copias.hacer_copia(s.get("nombre") or s["usuario"]), **copias.ajustes()})
             return self._ok(copias.ajustes())
