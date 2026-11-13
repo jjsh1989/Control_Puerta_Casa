@@ -454,7 +454,7 @@ def url_enlaces():
 
 
 def url_evento(ident):
-    base = url_panel()
+    base = url_enlaces()
     return f"{base}/#evento={ident}" if base else ""
 
 

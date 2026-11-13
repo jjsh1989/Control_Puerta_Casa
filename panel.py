@@ -26,6 +26,7 @@ import alertas
 import bateria
 import camara
 import copias
+import dispositivos
 import extras
 import telegram
 import cuentas
@@ -1020,6 +1021,26 @@ class Manejador(BaseHTTPRequestHandler):
             if datos.get("hacer"):
                 return self._ok({"texto": copias.hacer_copia(s.get("nombre") or s["usuario"]), **copias.ajustes()})
             return self._ok(copias.ajustes())
+        if ruta == "/api/admin/dispositivos":
+            quien = s.get("nombre") or s["usuario"]
+            if datos.get("alta"):
+                enlace, r = dispositivos.alta(datos["alta"], quien)
+                nk.registrar("Enlace para recordar un dispositivo", quien, str(datos["alta"])[:40])
+                enviado = False
+                if datos.get("telegram"):
+                    chat = dispositivos.chat_de(s["usuario"])
+                    if not chat:
+                        raise RuntimeError("No tienes Telegram vinculado para los avisos. Copia el enlace.")
+                    dispositivos.mandar_enlace(chat, enlace, " ".join(str(datos["alta"]).split())[:40])
+                    enviado = True
+                return self._ok({**r, "enlace": enlace, "enviado": enviado})
+            if datos.get("borrar"):
+                r = dispositivos.borrar(datos["borrar"])
+                nk.registrar("Dispositivo olvidado", quien, str(datos.get("nombre") or datos["borrar"])[:40])
+                return self._ok(r)
+            if datos.get("cancelar"):
+                return self._ok(dispositivos.cancelar_enlaces())
+            return self._ok(dispositivos.listar())
         if ruta == "/api/admin/nuki/ajustes":
             hecho = nuki_extra.guardar_ajustes(cfg, datos.get("cambios") or {})
             if hecho:

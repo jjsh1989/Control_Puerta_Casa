@@ -973,6 +973,21 @@
         <div id="cpLista"></div>
         <div class="ayuda">Para recuperarla en un servidor nuevo, mira «Recuperar una copia» en INSTALAR.md. <b>Sin la contraseña no se puede recuperar</b>: apúntala en un sitio seguro.</div>
       </div>
+      <div class="card solo-admin" data-grupo="casas" id="cardDispositivos">
+        <div class="cab" style="margin-bottom:0"><h2>Dispositivos recordados</h2><span class="chip" id="dvChip"></span></div>
+        <p class="muted peq" style="margin:8px 0 12px">Los móviles y ordenadores que entran por la dirección del dominio aunque Safari lleve el Relay privado.
+          Para añadir uno, crea un enlace y ábrelo <b>en ese dispositivo</b>: sirve una sola vez y caduca en 15 minutos. Si olvidas uno, deja de entrar por el dominio
+          (por la VPN sigue entrando). También puedes pedir el enlace con <b>/dispositivo</b> en Telegram.</p>
+        <div id="dvLista"><div class="muted peq">Cargando…</div></div>
+        <div class="rejilla" style="margin-top:12px">
+          <div><label for="dv_nombre">Nombre del nuevo dispositivo</label><input id="dv_nombre" maxlength="40" placeholder="iPhone de Ana, PC del despacho…"></div>
+        </div>
+        <div class="acciones" style="margin-top:10px">
+          <button type="button" class="principal" onclick="altaDispositivo(this, false)">Crear enlace</button>
+          <button type="button" onclick="altaDispositivo(this, true)"><svg class="i"><use href="#i-telegram"/></svg>Mandármelo por Telegram</button>
+        </div>
+        <div id="dvEnlace" class="ayuda" hidden></div>
+      </div>
       <div class="card solo-admin" data-grupo="casas" id="cardCasas">
         <div class="cab"><h2>Casas y usuarios</h2>
           <div class="acciones">
@@ -2185,6 +2200,51 @@ async function guardarClaveCopias(ev) {
 async function copiaAhora(b) {
   await conBoton(b, async () => { const r = (await api("POST", "/api/admin/copias", {hacer: true})).resultado; pintarCopias(r); aviso("Copia hecha: " + r.texto); });
 }
+function pintarDispositivos(r) {
+  const l = r.dispositivos || [];
+  $("dvChip").textContent = l.length ? `${l.length} recordado${l.length === 1 ? "" : "s"}` : "Ninguno";
+  const fecha = f => f ? esc(new Date(f.replace(" ", "T")).toLocaleString("es-ES", {dateStyle: "medium", timeStyle: "short"})) : "—";
+  $("dvLista").innerHTML = (l.length ? l.map(d => `<div class="fila-seccion"><span class="nom">📱 ${esc(d.nombre)}
+        <span class="muted peq">· ${esc(d.equipo || "")} · último uso ${fecha(d.ultimo)}</span></span>
+      <div class="herramientas"><button type="button" class="peligro" data-id="${esc(d.id)}" data-nombre="${esc(d.nombre)}"
+        onclick="olvidarDispositivo(this)">Olvidar</button></div></div>`).join("")
+    : '<div class="muted peq">Todavía no hay ninguno.</div>')
+    + (r.pendientes ? `<div class="ayuda">${r.pendientes} enlace${r.pendientes === 1 ? "" : "s"} sin usar todavía.
+        <a href="#" onclick="cancelarEnlacesDisp(event)">Anularlos</a></div>` : "");
+}
+async function cargarDispositivos() {
+  try { pintarDispositivos((await api("POST", "/api/admin/dispositivos", {})).resultado); }
+  catch (e) { $("dvLista").innerHTML = `<div class="muted peq">⚠️ ${esc(e.message)}</div>`; $("dvChip").textContent = ""; }
+}
+async function altaDispositivo(b, porTelegram) {
+  const nombre = $("dv_nombre").value.trim();
+  if (!nombre) { $("dv_nombre").focus(); return aviso("Ponle un nombre al dispositivo"); }
+  await conBoton(b, async () => {
+    const r = (await api("POST", "/api/admin/dispositivos", {alta: nombre, telegram: porTelegram})).resultado;
+    pintarDispositivos(r); $("dv_nombre").value = "";
+    const e = $("dvEnlace"); e.hidden = false;
+    e.innerHTML = r.enviado ? `✅ Te lo he mandado por Telegram. Ábrelo en «${esc(nombre)}» antes de 15 minutos.`
+      : `Abre este enlace en «${esc(nombre)}» antes de 15 minutos (solo sirve una vez):
+         <input readonly id="dvEnlaceTxt" value="${esc(r.enlace)}" style="margin-top:6px" onclick="this.select()">
+         <button type="button" style="margin-top:6px" onclick="copiarEnlaceDisp()">Copiar enlace</button>`;
+    aviso(r.enviado ? "Enlace enviado por Telegram" : "Enlace creado");
+  });
+}
+function copiarEnlaceDisp() {
+  const i = $("dvEnlaceTxt"); i.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).then(() => aviso("Enlace copiado"), () => { document.execCommand("copy"); aviso("Enlace copiado"); });
+}
+async function olvidarDispositivo(b) {
+  const nombre = b.dataset.nombre;
+  if (!await confirmar(`«${nombre}» dejará de entrar por el dominio. Por la VPN sigue pudiendo entrar, y puedes volver a añadirlo cuando quieras.`,
+      {titulo: "Olvidar dispositivo", boton: "Olvidar", peligro: true})) return;
+  await conBoton(b, async () => { pintarDispositivos((await api("POST", "/api/admin/dispositivos", {borrar: b.dataset.id, nombre})).resultado); aviso("Dispositivo olvidado"); });
+}
+async function cancelarEnlacesDisp(ev) {
+  ev.preventDefault();
+  pintarDispositivos((await api("POST", "/api/admin/dispositivos", {cancelar: true})).resultado);
+  $("dvEnlace").hidden = true; aviso("Enlaces anulados");
+}
 async function abrirPinTg() {
   $("pinTgNuevo").value = ""; $("pinTgOtra").value = ""; $("pinTgPass").value = "";
   $("dlgPinTg").showModal(); $("pinTgNuevo").focus();
@@ -2931,7 +2991,7 @@ async function cargarAjustes() {
   pintarReglas();
   pintarTgAvisos();
   pintarExtras();
-  if (YO?.rol === "admin") cargarCopias().catch(() => {});
+  if (YO?.rol === "admin") { cargarCopias().catch(() => {}); cargarDispositivos(); }
   mostrarProveedor();
   pintarBateria();
   cargarSmtp().catch(() => {});

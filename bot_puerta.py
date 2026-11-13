@@ -51,6 +51,57 @@ def _permiso(chat, cuenta):
     return next(((u, nombre) for c, u, nombre in casas_de(chat) if c == cuenta), (None, None))
 
 
+def _admin(chat):
+    """(cuenta, usuario) si este chat es de un administrador del panel."""
+    return next(((c, u) for c, u, _ in casas_de(chat) if u["rol"] == "admin"), (None, None))
+
+
+# ---------------------------------------------------------------- dispositivos recordados (/dispositivo)
+
+def _lista_dispositivos(chat, cuenta, editar=None, cabecera=""):
+    import dispositivos
+    lineas = [cabecera] if cabecera else []
+    filas = []
+    try:
+        lista = dispositivos.listar().get("dispositivos") or []
+    except Exception as e:
+        lineas.append(f"⚠️ {e}")
+    else:
+        sitio = dispositivos.url_web().split("//", 1)[-1]
+        lineas.append(f"📱 Dispositivos recordados en {sitio}:" if lista else "📱 Todavía no hay dispositivos recordados.")
+        lineas += [f"• {d['nombre']} — {d.get('equipo') or '?'} · último uso {d.get('ultimo') or '—'}" for d in lista]
+        filas = [[{"text": f"🗑 Olvidar «{d['nombre'][:24]}»", "callback_data": f"d|{cuenta}|{d['id']}"}] for d in lista]
+    lineas.append("\nPara añadir uno, escribe /dispositivo y su nombre; por ejemplo: /dispositivo iPhone de Ana")
+    filas.append([{"text": "🔄 Actualizar", "callback_data": f"y|{cuenta}"}])
+    if editar:
+        telegram.editar_texto(chat, editar, "\n".join(lineas), filas)
+    else:
+        telegram.enviar(chat, "\n".join(lineas), filas)
+
+
+def _orden_dispositivo(chat, argumento):
+    import dispositivos
+    cuenta, u = _admin(chat)
+    if not u:
+        telegram.enviar(chat, "Solo un administrador del panel puede añadir u olvidar dispositivos.")
+        return
+    if not dispositivos.disponible():
+        telegram.enviar(chat, "La gestión de dispositivos no está configurada en este servidor.")
+        return
+    nombre = " ".join(argumento.split())[:40]
+    if not nombre:
+        return _lista_dispositivos(chat, cuenta)
+    quien = u.get("nombre") or u["usuario"]
+    try:
+        enlace, _ = dispositivos.alta(nombre, quien)
+    except Exception as e:
+        telegram.enviar(chat, f"⚠️ No se pudo crear el enlace: {e}")
+        return
+    with cuentas.en_cuenta(cuenta, u["usuario"]):
+        nk.registrar("Enlace para recordar un dispositivo", quien, f"{nombre} (desde Telegram)")
+    dispositivos.mandar_enlace(chat, enlace, nombre)
+
+
 # ---------------------------------------------------------------- menú de la puerta
 
 def _texto_estado(cuenta, nombre_casa):
@@ -235,6 +286,27 @@ def boton(q):
         return telegram.responder_boton(ident, "No tienes permiso para esto en esa casa.", alerta=True)
     teclado = (msg.get("reply_markup") or {}).get("inline_keyboard") or []
     import camara
+
+    if tipo in ("d", "w", "y"):  # dispositivos: olvidar (pregunta), olvidar (confirmado), actualizar
+        if u["rol"] != "admin":
+            return telegram.responder_boton(ident, "Solo un administrador puede hacer esto.", alerta=True)
+        if tipo == "y":
+            telegram.responder_boton(ident)
+            return _lista_dispositivos(chat, cuenta, editar=mid)
+        if tipo == "d":
+            telegram.responder_boton(ident, "¿Seguro? Dejará de entrar por el dominio (por la VPN, sí).")
+            return telegram.editar_botones(chat, mid, [[{"text": "✅ Sí, olvidarlo", "callback_data": f"w|{cuenta}|{extra}"},
+                                                         {"text": "Cancelar", "callback_data": f"y|{cuenta}"}]])
+        import dispositivos
+        try:
+            dispositivos.borrar(extra)
+        except Exception as e:
+            telegram.responder_boton(ident, f"No se pudo: {e}", alerta=True)
+            return _lista_dispositivos(chat, cuenta, editar=mid)
+        with cuentas.en_cuenta(cuenta, u["usuario"]):
+            nk.registrar("Dispositivo olvidado", u.get("nombre") or u["usuario"], f"{extra} (desde Telegram)")
+        telegram.responder_boton(ident, "Olvidado")
+        return _lista_dispositivos(chat, cuenta, editar=mid, cabecera="✅ Dispositivo olvidado.")
 
     if tipo == "p":  # menú / actualizar
         telegram.responder_boton(ident)
@@ -477,6 +549,13 @@ def mensaje(m, texto, chat):
         _despues(5, _menu, chat, p["cuenta"], p["casa"])
         return True
 
+    orden, _, argumento = texto.partition(" ")
+    if orden.split("@")[0] in ("/dispositivo", "/dispositivos"):
+        if not casas_de(chat):
+            return False
+        _orden_dispositivo(chat, argumento)
+        return True
+
     if texto.split("@")[0] in ("/codigo", "/código"):
         casas = casas_de(chat)
         if not casas:
@@ -510,6 +589,7 @@ def preparar():
     try:
         telegram._api("setMyCommands", {"commands": [{"command": "puerta", "description": "Estado y control de la puerta"},
                                                      {"command": "camara", "description": "Ver una cámara ahora"},
-                                                     {"command": "codigo", "description": "Dar un código temporal"}]})
+                                                     {"command": "codigo", "description": "Dar un código temporal"},
+                                                     {"command": "dispositivo", "description": "Recordar u olvidar un móvil (admin)"}]})
     except Exception as e:
         nk.log(f"Telegram: no se pudo poner el menú del bot: {e}")

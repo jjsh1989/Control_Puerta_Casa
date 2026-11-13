@@ -66,7 +66,9 @@ cd /opt/puerta
 ```
 Publica el panel en `https://puerta.<tu-red>.ts.net` con certificado HTTPS válido, solo para los dispositivos de tu red Tailscale, y guarda esa dirección en `.env` (`PANEL_URL_PUBLICA`) para que los enlaces de los avisos funcionen.
 
-Opcional: si tienes un dominio propio que redirige al panel (por ejemplo, una página que solo te lleva al panel cuando estás en Tailscale), ponlo en `.env` como `PANEL_URL_ENLACES=https://tu-dominio` y los botones «📹 En directo» de Telegram lo usarán. Esa página debe pasar al panel lo que va tras `#` (`#directo=…`).
+Opcional: si tienes un dominio propio que redirige al panel (por ejemplo, una página que solo te lleva al panel cuando estás en Tailscale), ponlo en `.env` como `PANEL_URL_ENLACES=https://tu-dominio` y todos los enlaces de los avisos (Telegram, WhatsApp, correo) lo usarán. Esa página debe pasar al panel lo que va tras `#` (`#directo=…`, `#evento=…`).
+
+**Dispositivos recordados** (opcional, si esa página es la de entrada en PHP con `api.php`): sirve para entrar por el dominio aunque Safari lleve el Relay privado de iCloud. La página recuerda cada móvil con una cookie de su servidor y el panel gestiona la lista en *Ajustes → Casas → Dispositivos recordados* (o con `/dispositivo` en Telegram, solo administradores). Panel y página firman sus mensajes con un secreto compartido: en el panel va en la bóveda (`web_dispositivos`, cuenta `_sistema`) y en la página, en `privado/secreto.php` (carpeta bloqueada con `Require all denied`).
 
 Ábrela, escribe el **código de instalación** y crea tu usuario administrador.
 
