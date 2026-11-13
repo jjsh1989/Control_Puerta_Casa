@@ -2146,12 +2146,20 @@ function pintarExtras() {
   const partes = [e.llave.activo && "llave " + e.llave.hora, e.resumen.activo && "resumen " + e.resumen.hora, e.silencio.activo && "sin sonido"].filter(Boolean);
   $("exResumen").textContent = partes.length ? partes.join(" · ") : "Nada activado";
 }
-async function guardarExtras(b) {
-  const datos = {llave: {activo: $("ex_llave").checked, hora: $("ex_llave_hora").value},
+function datosExtras() {
+  return {llave: {activo: $("ex_llave").checked, hora: $("ex_llave_hora").value},
     resumen: {activo: $("ex_resumen").checked, hora: $("ex_resumen_hora").value},
     silencio: {activo: $("ex_silencio").checked, desde: $("ex_sil_desde").value, hasta: $("ex_sil_hasta").value,
       camaras: [...document.querySelectorAll("#exCamaras input:checked")].map(x => x.dataset.sn)}};
-  await conBoton(b, async () => { CONFIG.extras = (await api("POST", "/api/extras", datos)).resultado; pintarExtras(); aviso("Guardado"); });
+}
+function extrasCambiados() {
+  const e = CONFIG.extras; if (!e || !$("ex_llave")) return false;
+  const antes = {llave: {activo: e.llave.activo, hora: e.llave.hora}, resumen: {activo: e.resumen.activo, hora: e.resumen.hora},
+    silencio: {activo: e.silencio.activo, desde: e.silencio.desde, hasta: e.silencio.hasta, camaras: e.silencio.camaras}};
+  return JSON.stringify(antes) !== JSON.stringify(datosExtras());
+}
+async function guardarExtras(b, callado) {
+  await conBoton(b, async () => { CONFIG.extras = (await api("POST", "/api/extras", datosExtras())).resultado; pintarExtras(); if (!callado) aviso("Guardado"); });
 }
 async function resumenAhora(b) {
   await conBoton(b, async () => { await api("POST", "/api/extras", {resumen_ahora: true}); aviso("Resumen enviado por Telegram"); });
@@ -3018,7 +3026,10 @@ async function guardarAjustes(ev) {
   ev.preventDefault();
   await conBoton(ev.submitter, async () => {
     const antes = soloCamara();
-    await api("POST", "/api/config", datosAjustes()); aviso("Ajustes guardados"); await cargarAjustes(); cargarEstado();
+    const extras = extrasCambiados() ? datosExtras() : null;  // tienen su propio botón, pero que no se pierdan
+    await api("POST", "/api/config", datosAjustes());
+    if (extras) CONFIG.extras = (await api("POST", "/api/extras", extras)).resultado;
+    aviso("Ajustes guardados"); await cargarAjustes(); cargarEstado();
     if (antes !== soloCamara()) { pintarReglas(); irA(soloCamara() ? "camara" : "personas"); }
   });
 }

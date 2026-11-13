@@ -22,6 +22,7 @@ CLAVE_SMTP_PASSWORD = "smtp_password"  # en la bóveda de _sistema
 AVISO_INICIAL = {"activo": False, "umbral": 25, "canal": "correo", "correo": "", "telefono": "", "wa_principal": False}
 CANALES = ("correo", "whatsapp", "ambos")
 MARGEN_REARME = 10                   # % por encima del umbral para volver a avisar
+RECORDAR_CADA = 24 * 3600            # mientras siga baja, se repite el aviso una vez al día
 CACHE_SEGUNDOS = 300
 _cache = {}                          # cuenta -> (momento, datos)
 
@@ -255,32 +256,43 @@ def revisar(cfg):
         "sensor": (datos["sensor_critica"], not datos["sensor_critica"],
                    "La pila del sensor de puerta está casi agotada"),
     }
+    if datos["critica"] and carga is not None:
+        piezas["cerradura"] = (*piezas["cerradura"][:2], piezas["cerradura"][2] + " (nivel crítico)")
     pendientes = []
+    recordatorio = False
     for pieza, (baja, recuperada, texto) in piezas.items():
         if baja:
             if not e.get(f"registrado_{pieza}"):
                 nk.registrar("Batería baja", pieza, texto)
                 e[f"registrado_{pieza}"] = True
-            if not e.get(f"avisado_{pieza}"):
-                pendientes.append((pieza, texto))
+            nivel = "critica" if pieza != "cerradura" or datos["critica"] else "baja"
+            avisado = e.get(f"avisado_{pieza}")
+            hace = time.time() - (avisado if isinstance(avisado, (int, float)) and avisado is not True else 0)
+            peor = nivel == "critica" and e.get(f"nivel_{pieza}") != "critica"
+            if not avisado or hace >= RECORDAR_CADA or peor:
+                pendientes.append((pieza, texto, nivel))
+                recordatorio = recordatorio or bool(avisado and not peor)
         elif recuperada:
             if e.get(f"registrado_{pieza}"):
                 nk.registrar("Batería recuperada", pieza,
                              f"{carga} %" if pieza == "cerradura" and carga is not None else "Normal")
             e[f"registrado_{pieza}"] = False
             e[f"avisado_{pieza}"] = False
+            e.pop(f"nivel_{pieza}", None)
 
     if pendientes and av["activo"] and canales_de(av):
         try:
-            lineas = "\n".join(f"• {t}." for _, t in pendientes)
-            destinos = enviar_aviso(cfg, av, f"🔋 Batería baja · {nombre_cuenta()}",
+            lineas = "\n".join(f"• {t}." for _, t, _ in pendientes)
+            titulo = "🔋 Recordatorio: batería baja" if recordatorio else "🔋 Batería baja"
+            destinos = enviar_aviso(cfg, av, f"{titulo} · {nombre_cuenta()}",
                                     f"Aviso del gestor de la puerta ({nombre_cuenta()}):\n\n{lineas}\n\n"
                                     f"Cámbialas o cárgalas pronto para que la cerradura no se quede sin energía.\n"
-                                    f"(Aviso configurado al {umbral} %.)\n")
-            for pieza, _ in pendientes:
-                e[f"avisado_{pieza}"] = True
+                                    f"(Aviso configurado al {umbral} %. Mientras siga baja, se repite una vez al día.)\n")
+            for pieza, _, nivel in pendientes:
+                e[f"avisado_{pieza}"] = time.time()
+                e[f"nivel_{pieza}"] = nivel
             e.pop("ultimo_error", None)
-            nk.registrar("Aviso de batería enviado", ", ".join(destinos), "; ".join(t for _, t in pendientes))
+            nk.registrar("Aviso de batería enviado", ", ".join(destinos), "; ".join(t for _, t, _ in pendientes))
         except Exception as err:
             # se reintenta en la siguiente revisión; el error solo se anota una vez
             if e.get("ultimo_error") != str(err):
