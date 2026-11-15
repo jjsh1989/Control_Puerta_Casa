@@ -5,6 +5,8 @@
 - Este módulo mantiene una conexión WebSocket con ese contenedor y recibe sus eventos:
   movimiento, persona, timbre... y la foto de cada evento.
 - Para los clips se abre el vídeo en directo unos segundos y se convierte a MP4 con ffmpeg.
+  En las cámaras con «Grabar antes del aviso» el directo se mantiene siempre abierto y los últimos
+  segundos se guardan en memoria (clase Memoria), así el clip empieza unos segundos antes del aviso.
 - Fotos y clips se guardan en datos/camara/<cuenta>/ y se borran a los 30 días.
 """
 import json
@@ -31,6 +33,7 @@ DIAS_GUARDAR = 30
 ESPERA_ENTRE_AVISOS = 120  # segundos entre avisos de movimiento de la misma cámara
 DURACION_VISITA = 15 * 60  # hasta cuánto se juntan las detecciones seguidas en el mismo mensaje
 SEGUNDOS_CLIP = 15
+PREVIOS_VALIDOS = (0, 5, 10, 15)  # segundos de antes del aviso que se pueden elegir por cámara
 RE_ARCHIVO = re.compile(r"^[\w-]+\.(jpg|mp4)$")
 
 EVENTOS = {
@@ -146,14 +149,15 @@ def ajustes_sistema():
 def ajustes_camara(serial):
     d = (ajustes_sistema().get("dispositivos") or {}).get(serial) or {}
     return {"cuenta": d.get("cuenta", cuentas.CUENTA_PRINCIPAL), "predeterminada": bool(d.get("predeterminada")),
-            "movimiento": bool(d.get("movimiento")), "tipos": d.get("tipos")}  # tipos None = todos
+            "movimiento": bool(d.get("movimiento")), "tipos": d.get("tipos"),  # tipos None = todos
+            "previo": int(d.get("previo") or 0)}
 
 
 def cuenta_de(serial):
     return ajustes_camara(serial)["cuenta"]
 
 
-def asignar(serial, cuenta=None, predeterminada=None, movimiento=None, tipos=None):
+def asignar(serial, cuenta=None, predeterminada=None, movimiento=None, tipos=None, previo=None):
     s = cuentas.leer_sistema()
     disp = s.setdefault("eufy", {}).setdefault("dispositivos", {})
     d = disp.setdefault(serial, {"cuenta": cuentas.CUENTA_PRINCIPAL})
@@ -162,6 +166,10 @@ def asignar(serial, cuenta=None, predeterminada=None, movimiento=None, tipos=Non
         d["predeterminada"] = False  # al cambiar de casa deja de ser la predeterminada de la anterior
     if movimiento is not None:
         d["movimiento"] = bool(movimiento)
+    if previo is not None:
+        if int(previo) not in PREVIOS_VALIDOS:
+            raise RuntimeError("Segundos antes del aviso no válidos.")
+        d["previo"] = int(previo)
     if tipos is not None:
         validos = {t for t, _ in TIPOS_DETECCION}
         d["tipos"] = sorted({t for t in tipos if t in validos})
@@ -750,11 +758,24 @@ class Cliente(threading.Thread):
             except Exception:
                 pass
 
-    def clip(self, sn, segundos=SEGUNDOS_CLIP):
-        """Graba unos segundos del directo y devuelve el MP4 (bytes) o None."""
+    def clip(self, sn, segundos=SEGUNDOS_CLIP, desde=None):
+        """Graba unos segundos del directo y devuelve el MP4 (bytes) o None.
+        Con «desde» (momento del aviso) y la cámara guardando en memoria, el clip va de unos segundos
+        antes de ese momento hasta «segundos» después."""
         cerrojo = self.bloqueo_clip.setdefault(sn, threading.Lock())
         if not cerrojo.acquire(timeout=1):
             return None  # ya se está grabando un clip de esta cámara
+        try:
+            if desde and MEMORIA.viva(sn):
+                mp4 = MEMORIA.clip(sn, desde, segundos)
+                if mp4:
+                    return mp4
+                nk.log("Eufy: la memoria del directo no sirvió para el clip; se graba desde ahora")
+            return self._clip_directo(sn, segundos)
+        finally:
+            cerrojo.release()
+
+    def _clip_directo(self, sn, segundos):
         c = {"datos": bytearray(), "meta": {}}
 
         def recibir(trozo, meta):
@@ -777,8 +798,6 @@ class Cliente(threading.Thread):
             nk.log(f"Eufy: no se pudo grabar el clip ({e})")
             self.salir(sn, recibir)
             return None
-        finally:
-            cerrojo.release()
 
     def directo_mjpeg(self, sn, segundos_max=300, ancho=960, fps=8):
         """Generador de imágenes JPEG del directo (para mostrarlo en el navegador como MJPEG).
@@ -890,6 +909,148 @@ class Cliente(threading.Thread):
 CLIENTE = Cliente()
 
 
+def _es_clave(trozo, hevc):
+    """¿Empieza este trozo un fotograma clave (lleva SPS en H.264 o VPS en H.265)? Solo desde ahí se puede cortar."""
+    i = 0
+    while True:
+        i = trozo.find(b"\x00\x00\x01", i, 400)
+        if i < 0 or i + 3 >= len(trozo):
+            return False
+        b = trozo[i + 3]
+        if (hevc and (b >> 1) & 0x3F == 32) or (not hevc and b & 0x1F == 7):
+            return True
+        i += 3
+
+
+class Memoria(threading.Thread):
+    """Mantiene abierto el directo de las cámaras con «Grabar antes del aviso» y guarda en memoria
+    los últimos segundos (nada en disco). Si la emisión se corta, la vuelve a pedir."""
+    REVISAR = 10
+    CORTADA = 20  # segundos sin vídeo para darla por cortada
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.oyentes = {}   # sn -> función que recibe el directo
+        self.trozos = {}    # sn -> deque de (momento, bytes, es_clave)
+        self.meta = {}
+        self.ultimo = {}    # sn -> momento del último trozo (o del último intento de reanudar)
+        self.fallando = set()
+        self.cerrojo = threading.Lock()
+
+    def viva(self, sn):
+        return sn in self.oyentes and time.time() - self.ultimo.get(sn, 0) < 5 and bool(self.trozos.get(sn))
+
+    def run(self):
+        time.sleep(20)  # que el cliente conecte y cargue las cámaras
+        while True:
+            try:
+                self._revisar()
+            except Exception as e:
+                nk.log(f"Eufy: memoria del directo ({e})")
+            time.sleep(self.REVISAR)
+
+    def _revisar(self):
+        quiero = {sn for sn in CLIENTE.dispositivos if ajustes_camara(sn)["previo"]} if CLIENTE.driver else set()
+        for sn in list(self.oyentes):
+            if sn not in quiero:
+                self._parar(sn)
+        for sn in quiero:
+            if sn not in self.oyentes:
+                self._empezar(sn)
+            elif time.time() - self.ultimo.get(sn, 0) > self.CORTADA:
+                self._reanudar(sn)
+
+    def _nombre(self, sn):
+        return CLIENTE.dispositivos.get(sn, {}).get("nombre", sn)
+
+    def _empezar(self, sn):
+        hevc = {"v": False}
+        cola = deque()
+
+        def recibir(trozo, meta):
+            if not trozo:
+                return
+            ahora = time.time()
+            if meta:
+                self.meta[sn] = meta
+                hevc["v"] = str(meta.get("videoCodec", "H264")).upper() in ("H265", "HEVC", "1")
+            with self.cerrojo:
+                cola.append((ahora, trozo, _es_clave(trozo, hevc["v"])))
+                self._recortar(cola, ahora - ajustes_camara(sn)["previo"] - SEGUNDOS_CLIP - 20)
+            self.ultimo[sn] = ahora
+        self.trozos[sn], self.ultimo[sn] = cola, time.time()
+        try:
+            CLIENTE.unirse(sn, recibir)
+        except Exception as e:
+            self.trozos.pop(sn, None)
+            if sn not in self.fallando:
+                self.fallando.add(sn)
+                nk.log(f"Eufy: no se pudo abrir el directo de «{self._nombre(sn)}» para grabar antes del aviso ({e})")
+            return
+        self.oyentes[sn] = recibir
+        self.fallando.discard(sn)
+        nk.log(f"Eufy: «{self._nombre(sn)}» guarda en memoria los segundos antes de cada aviso")
+
+    @staticmethod
+    def _recortar(cola, limite):
+        # quita lo antiguo, pero siempre empezando en un fotograma clave
+        while len(cola) > 1 and cola[0][0] < limite:
+            siguiente = next((i for i, t in enumerate(cola) if i and t[2]), None)
+            if siguiente is None or cola[siguiente][0] > limite:
+                break
+            for _ in range(siguiente):
+                cola.popleft()
+
+    def _reanudar(self, sn):
+        self.ultimo[sn] = time.time()  # el próximo intento, dentro de CORTADA segundos
+        for orden in ("device.stop_livestream", "device.start_livestream"):
+            try:
+                CLIENTE.comando(orden, timeout=40, serialNumber=sn)
+            except Exception as e:
+                if orden.endswith("start_livestream") and "already" not in str(e).lower() and sn not in self.fallando:
+                    self.fallando.add(sn)
+                    nk.log(f"Eufy: el directo de «{self._nombre(sn)}» se cortó y no se puede reanudar ({e})")
+                    return
+        if sn in self.fallando:
+            self.fallando.discard(sn)
+            nk.log(f"Eufy: el directo de «{self._nombre(sn)}» vuelve a guardarse en memoria")
+
+    def _parar(self, sn):
+        f = self.oyentes.pop(sn, None)
+        self.trozos.pop(sn, None)
+        self.fallando.discard(sn)
+        if f:
+            CLIENTE.salir(sn, f)
+            nk.log(f"Eufy: «{self._nombre(sn)}» deja de guardar en memoria los segundos antes de cada aviso")
+
+    def clip(self, sn, desde, segundos):
+        """Clip desde «previo» segundos antes de «desde» hasta «segundos» después (espera a que pasen)."""
+        previo = ajustes_camara(sn)["previo"]
+        fin = desde + segundos
+        while time.time() < fin + 1:
+            if not self.viva(sn) and time.time() - self.ultimo.get(sn, 0) > 8:
+                break  # se cortó a medias: se usa lo que haya
+            time.sleep(0.3)
+        cola = self.trozos.get(sn)
+        if not cola:
+            return None
+        inicio = desde - previo
+        with self.cerrojo:
+            lista = list(cola)
+        claves = [i for i, t in enumerate(lista) if t[2]]
+        if not claves:
+            return None
+        antes = [i for i in claves if lista[i][0] <= inicio]
+        primero = antes[-1] if antes else claves[0]
+        datos = b"".join(t[1] for t in lista[primero:] if t[0] <= fin + 0.5)
+        if len(datos) < 2000:
+            return None
+        return _a_mp4(datos, self.meta.get(sn) or {})
+
+
+MEMORIA = Memoria()
+
+
 def _a_mp4(crudo, meta):
     codec = str(meta.get("videoCodec", "H264")).upper()
     formato = "hevc" if codec in ("H265", "HEVC", "1") else "h264"
@@ -973,7 +1134,7 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
         visita.update(recibos=recibos, pie=pie, cuenta=cuenta, ident=ident, tipo=tipo, sn=sn)
     if con_clip and sn and CLIENTE.driver:
         def grabar():
-            mp4 = CLIENTE.clip(sn)
+            mp4 = CLIENTE.clip(sn, desde=momento.timestamp())
             if not mp4:
                 return
             (carpeta(cuenta) / f"{ident}.mp4").write_bytes(mp4)

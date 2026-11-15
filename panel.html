@@ -1178,6 +1178,7 @@
   <h2 id="dcTitulo">Cámara</h2>
   <p class="muted peq" id="dcSub" style="margin:4px 0 0"></p>
   <div id="dcTipos"></div>
+  <div id="dcPrevio"></div>
   <div id="dcAjustes"><div class="vacio">Cargando…</div></div>
   <div class="pie"><button type="button" onclick="dlgCamara.close()">Cerrar</button></div>
 </dialog>
@@ -2650,6 +2651,10 @@ async function abrirAjustesCam(sn) {
     <div class="dias" style="flex-wrap:wrap; gap:6px">${tipos.map(t => `<label class="dia" style="width:auto; padding:0 10px">
       <input type="checkbox" data-tipo="${esc(t)}" ${marcados.includes(t) ? "checked" : ""} onchange="guardarTiposCam()">${TIPOS_ICONO[t] || ""} ${esc(t)}</label>`).join("")}</div>
     <div class="ayuda">Solo cuenta si «📷 Movimiento» está activado para esta cámara. Por ejemplo, solo personas para que no avise por el gato.</div>` : "";
+  const pv = d?.previo || 0;
+  $("dcPrevio").innerHTML = `<label for="dcPrevioSel" style="margin-top:12px">Grabar antes del aviso</label>
+    <select id="dcPrevioSel" onchange="guardarPrevioCam(this)">${[0, 5, 10, 15].map(s => `<option value="${s}" ${s === pv ? "selected" : ""}>${s ? `${s} segundos antes` : "No (el clip empieza con el aviso)"}</option>`).join("")}</select>
+    <div class="ayuda">El clip empieza unos segundos antes de que salte el aviso, para no perderse lo que lo provocó. Para eso el servidor mantiene el directo de esta cámara siempre abierto y guarda en memoria los últimos segundos (no ocupa disco, pero gasta red: unos 3 a 7 GB al día de tráfico dentro de casa).</div>`;
   $("dcAjustes").innerHTML = '<div class="vacio">Cargando…</div>';
   $("dlgCamara").showModal();
   try { DC_AJ = (await api("GET", "/api/camara/ajustes/" + encodeURIComponent(sn))).resultado; }
@@ -2675,6 +2680,12 @@ async function guardarAjusteCam(clave, valor, el) {
     pintarAjustesCam();
     aviso(ok ? "✅ La cámara ha confirmado el cambio" : "⚠️ La cámara aún no lo confirma; vuelve a mirar en un rato.");
   } catch (e) { aviso("⚠️ " + e.message); pintarAjustesCam(); }
+}
+async function guardarPrevioCam(el) {
+  el.disabled = true;
+  try { await api("POST", "/api/admin/camara/asignar", {serial: DC_SN, previo: +el.value}); aviso(+el.value ? "Guardado: en unos segundos empieza a guardar en memoria" : "Guardado"); cargarCamara(null, true); }
+  catch (e) { aviso("⚠️ " + e.message); }
+  el.disabled = false;
 }
 async function guardarTiposCam() {
   const tipos = [...document.querySelectorAll("#dcTipos [data-tipo]")].filter(x => x.checked).map(x => x.dataset.tipo);

@@ -1090,9 +1090,9 @@ class Manejador(BaseHTTPRequestHandler):
             if datos.get("serial") not in camara.CLIENTE.dispositivos:
                 raise RuntimeError("Cámara no encontrada.")
             camara.asignar(datos["serial"], datos.get("cuenta"), datos.get("predeterminada"), datos.get("movimiento"),
-                           datos.get("tipos"))
+                           datos.get("tipos"), datos.get("previo"))
             nk.registrar("Cámara configurada", camara.CLIENTE.dispositivos[datos["serial"]]["nombre"],
-                         ", ".join(f"{k}: {datos[k]}" for k in ("cuenta", "predeterminada", "movimiento", "tipos") if k in datos))
+                         ", ".join(f"{k}: {datos[k]}" for k in ("cuenta", "predeterminada", "movimiento", "tipos", "previo") if k in datos))
             return self._ok()
         if ruta == "/api/admin/camara/ajuste":
             sn = datos.get("serial")
@@ -1417,6 +1417,7 @@ def main():
     extras.Extras().start()
     telegram.Escucha().start()
     camara.CLIENTE.start()
+    camara.MEMORIA.start()
     camara.Limpieza().start()
     camara.VigilaCamaras().start()
     servidor = ThreadingHTTPServer((ESCUCHAR, PUERTO), Manejador)
