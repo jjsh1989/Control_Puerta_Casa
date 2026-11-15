@@ -106,7 +106,7 @@ El panel puede mandar a Home Assistant, por **MQTT**, los códigos del teclado y
 1. En Home Assistant: *Ajustes → Complementos* → instala y arranca **Mosquitto broker**. En su configuración, en *logins*, añade un usuario solo para el panel (p. ej. `puerta`) con una contraseña larga.
 2. *Ajustes → Dispositivos y servicios*: acepta la integración **MQTT** que aparece descubierta.
 3. En el panel: Ajustes → **Casas** → *Home Assistant*: IP de Home Assistant, puerto 1883, ese usuario y contraseña, marca *Conectar* y **Guardar**.
-4. En Home Assistant aparecen solos los dispositivos «Códigos · <casa>» (renovación semanal: encender, día, hora, días de validez, próxima y última, *Renovar todos ahora* y un evento para automatizaciones) y uno por persona (*Código activo*, *Caduca*, *Renovación automática*, *Renovar código* e *Invitado 24 h*).
+4. En Home Assistant aparecen solos los dispositivos «Códigos · <casa>» (renovación semanal: encender, día, hora cada 15 min, días que dura cada código, días de vigilancia de los desactivados, próxima y última, *Renovar todos ahora* y un evento para automatizaciones) y uno por persona (*Código activo*, *Caduca*, *Tipo de código* —Semanal, Temporal o Fijo—, *Enviar el código por*, el horario en que funciona —*Solo en un horario*, *Días del horario* como «L M X J V», *Horario desde* y *hasta*—, *Renovar código* e *Invitado 24 h*).
 Lo que se haga desde Home Assistant queda en el historial del panel con el gestor «Home Assistant».
 
 ### Avisos

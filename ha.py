@@ -35,6 +35,30 @@ EVENTOS = {
     "Código de invitado caducado y retirado": "invitado_caducado",
 }
 ORIGEN = "Home Assistant"
+HORAS = [f"{m // 60:02d}:{m % 60:02d}" for m in range(0, 24 * 60, 15)]   # cada 15 minutos
+HORAS_FIN = HORAS[1:] + ["23:59"]
+TIPOS = {"semanal": "Semanal", "manual": "Temporal", "fijo": "Fijo"}
+CANALES = {"whatsapp": "WhatsApp", "telegram": "Telegram", "ambos": "WhatsApp y Telegram"}
+FRANJA_INICIAL = {"activa": True, "dias": [0, 1, 2, 3, 4], "desde": "09:00", "hasta": "14:00"}
+
+
+def _con_actual(opciones, valor):
+    """Lista de opciones que incluye el valor actual aunque no sea múltiplo de 15 minutos."""
+    return opciones if valor in opciones else sorted(opciones + [valor])
+
+
+def _leer_dias(texto):
+    """«L M X J V» (o «lunes a viernes», «todos», «fines de semana») -> [0..6]."""
+    t = texto.strip().lower()
+    atajos = {"todos": range(7), "todos los dias": range(7), "todos los días": range(7),
+              "laborables": range(5), "lunes a viernes": range(5), "de lunes a viernes": range(5),
+              "fines de semana": [5, 6], "sabados y domingos": [5, 6], "sábados y domingos": [5, 6]}
+    if t in atajos:
+        return list(atajos[t])
+    letras = re.findall(r"[lmxjvsd]", t)
+    if not letras or re.sub(r"[lmxjvsd,\s]", "", t):
+        raise RuntimeError("Días no válidos: usa letras L M X J V S D separadas por espacios.")
+    return sorted({"lmxjvsd".index(x) for x in letras})
 
 
 # ---------------------------------------------------------------- ajustes
@@ -102,18 +126,25 @@ def _datos_casa(cuenta):
     activa = rot.get("activa", True)
     casa = {"rotacion": "ON" if activa else "OFF", "dia": DIAS[int(rot.get("dia", 0)) % 7],
             "hora": f"{int(rot.get('hora', 9)):02d}:{int(rot.get('minuto', 0)):02d}",
-            "dias": int(cfg.get("dias_validez", 7)),
+            "dias": int(cfg.get("dias_validez", 7)), "vigilar": int(cfg.get("vigilar_bajas_dias", 30)),
             "proxima": _proxima(rot, ahora).isoformat() if activa else None,
             "ultima": local.get("_ultima_rotacion")}
     personas = {}
     for d in cfg["destinatarios"]:
         info = local.get(d["id"], {})
         caduca, fijo = info.get("caduca"), bool(d.get("fijo"))
+        f = d.get("franja") if (d.get("franja") or {}).get("activa") else None
+        guardada = f or d.get("franja_anterior") or FRANJA_INICIAL
         activo = bool(info.get("codigo")) and (fijo or bool(caduca and datetime.fromisoformat(caduca) > ahora))
         personas[d["id"]] = {
             "nombre": d["nombre"], "fijo": fijo, "activo": activo,
             "caduca": caduca if activo and not fijo else None,
             "automatico": "ON" if d.get("automatico", True) else "OFF",
+            "tipo": TIPOS["fijo" if fijo else ("semanal" if d.get("automatico", True) else "manual")],
+            "canal": CANALES.get(d.get("canal_envio", "whatsapp"), "WhatsApp"),
+            "horario": "ON" if f else "OFF",
+            "h_dias": " ".join(nk.DIAS_CORTOS[x] for x in guardada["dias"]),
+            "h_desde": guardada["desde"], "h_hasta": guardada["hasta"],
             "franja": nk.texto_franja(d.get("franja")) or "siempre",
             "seccion": d.get("seccion", ""),
             "invitados": sum(1 for i in invitados if i["inquilino"] == d["id"]),
@@ -256,7 +287,8 @@ class Pasarela(threading.Thread):
     def _publicar_todo(self):
         casas = {c["id"]: c["nombre"] for c in cuentas.listar_cuentas()}
         todo = {cuenta: _datos_casa(cuenta) for cuenta in casas}
-        firma = json.dumps({k: [casas[k], {p: (v["nombre"], v["fijo"]) for p, v in todo[k][1].items()}] for k in todo},
+        firma = json.dumps({k: [casas[k], todo[k][0]["hora"],
+                                {p: (v["nombre"], v["h_desde"], v["h_hasta"]) for p, v in todo[k][1].items()}] for k in todo},
                            sort_keys=True, ensure_ascii=False)
         if firma != self.firma:
             self._descubrimiento(casas, todo)
@@ -284,13 +316,15 @@ class Pasarela(threading.Thread):
             ent("switch", "rotacion", "Renovación semanal", state_topic=t, value_template="{{ value_json.rotacion }}",
                 command_topic=f"{cmd}/rotacion", icon="mdi:calendar-sync")
             ent("select", "dia", "Día de renovación", state_topic=t, value_template="{{ value_json.dia }}",
-                command_topic=f"{cmd}/dia", options=DIAS, icon="mdi:calendar-week", entity_category="config")
-            ent("text", "hora", "Hora de renovación", state_topic=t, value_template="{{ value_json.hora }}",
-                command_topic=f"{cmd}/hora", pattern=r"^([01]\d|2[0-3]):[0-5]\d$", min=5, max=5,
-                icon="mdi:clock-outline", entity_category="config")
-            ent("number", "dias", "Días de validez", state_topic=t, value_template="{{ value_json.dias }}",
+                command_topic=f"{cmd}/dia", options=DIAS, icon="mdi:calendar-week")
+            ent("select", "hora", "Hora de renovación", state_topic=t, value_template="{{ value_json.hora }}",
+                command_topic=f"{cmd}/hora", options=_con_actual(HORAS, casa["hora"]), icon="mdi:clock-outline")
+            ent("number", "dias", "Días que dura cada código", state_topic=t, value_template="{{ value_json.dias }}",
                 command_topic=f"{cmd}/dias", min=1, max=60, step=1, mode="box", unit_of_measurement="d",
-                icon="mdi:calendar-range", entity_category="config")
+                icon="mdi:calendar-range")
+            ent("number", "vigilar", "Vigilar códigos desactivados", state_topic=t,
+                value_template="{{ value_json.vigilar }}", command_topic=f"{cmd}/vigilar", min=0, max=365, step=1,
+                mode="box", unit_of_measurement="d", icon="mdi:shield-search", entity_category="config")
             ent("sensor", "proxima", "Próxima renovación", state_topic=t, device_class="timestamp",
                 value_template="{{ value_json.proxima }}")
             ent("sensor", "ultima", "Última renovación", state_topic=t, device_class="timestamp",
@@ -309,12 +343,25 @@ class Pasarela(threading.Thread):
                     json_attributes_topic=tp,
                     json_attributes_template="{{ {'fijo': value_json.fijo, 'franja': value_json.franja, "
                                              "'seccion': value_json.seccion, 'invitados': value_json.invitados} | tojson }}")
-                if not p["fijo"]:
-                    ent("sensor", f"{pid}_caduca", "Caduca", dev, state_topic=tp, device_class="timestamp",
-                        value_template="{{ value_json.caduca }}")
-                    ent("switch", f"{pid}_automatico", "Renovación automática", dev, state_topic=tp,
-                        value_template="{{ value_json.automatico }}", command_topic=f"{cp}/automatico",
-                        icon="mdi:autorenew")
+                ent("sensor", f"{pid}_caduca", "Caduca", dev, state_topic=tp, device_class="timestamp",
+                    value_template="{{ value_json.caduca }}")
+                ent("select", f"{pid}_tipo", "Tipo de código", dev, state_topic=tp,
+                    value_template="{{ value_json.tipo }}", command_topic=f"{cp}/tipo",
+                    options=list(TIPOS.values()), icon="mdi:autorenew")
+                ent("select", f"{pid}_canal", "Enviar el código por", dev, state_topic=tp,
+                    value_template="{{ value_json.canal }}", command_topic=f"{cp}/canal",
+                    options=list(CANALES.values()), icon="mdi:send", entity_category="config")
+                ent("switch", f"{pid}_horario", "Solo en un horario", dev, state_topic=tp,
+                    value_template="{{ value_json.horario }}", command_topic=f"{cp}/horario", icon="mdi:calendar-clock")
+                ent("text", f"{pid}_h_dias", "Días del horario", dev, state_topic=tp,
+                    value_template="{{ value_json.h_dias }}", command_topic=f"{cp}/h_dias", min=1, max=40,
+                    icon="mdi:calendar-week")
+                ent("select", f"{pid}_h_desde", "Horario desde", dev, state_topic=tp,
+                    value_template="{{ value_json.h_desde }}", command_topic=f"{cp}/h_desde",
+                    options=_con_actual(HORAS, p["h_desde"]), icon="mdi:clock-start")
+                ent("select", f"{pid}_h_hasta", "Horario hasta", dev, state_topic=tp,
+                    value_template="{{ value_json.h_hasta }}", command_topic=f"{cp}/h_hasta",
+                    options=_con_actual(HORAS_FIN, p["h_hasta"]), icon="mdi:clock-end")
                 ent("button", f"{pid}_renovar", "Renovar código", dev, command_topic=f"{cp}/renovar",
                     payload_press="PRESS", icon="mdi:key-change")
                 ent("button", f"{pid}_invitado", "Invitado 24 h", dev, command_topic=f"{cp}/invitado",
@@ -369,6 +416,7 @@ class Pasarela(threading.Thread):
     @staticmethod
     def _ejecutar(pid, que, carga):
         cfg = nk.cargar_config()
+        antes = json.dumps(cfg, sort_keys=True, default=str)  # para no apuntar nada si no cambia
         if pid is None:
             rot = cfg.setdefault("rotacion", {})
             if que == "rotacion":
@@ -379,6 +427,12 @@ class Pasarela(threading.Thread):
                     raise RuntimeError("Día no válido")
                 rot["dia"] = DIAS.index(carga)
                 texto = f"día: {carga}"
+            elif que == "vigilar":
+                dias = int(float(carga))
+                if not 0 <= dias <= 365:
+                    raise RuntimeError("Días de vigilancia entre 0 y 365")
+                cfg["vigilar_bajas_dias"] = dias
+                texto = f"vigilar desactivados: {dias} días"
             elif que == "hora":
                 if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", carga):
                     raise RuntimeError("Hora no válida")
@@ -398,17 +452,60 @@ class Pasarela(threading.Thread):
                 return
             else:
                 return
+            if json.dumps(cfg, sort_keys=True, default=str) == antes:
+                return
             nk.guardar_config(cfg)
             nk.registrar("Renovación semanal cambiada", "", f"Desde Home Assistant · {texto}")
             return
         d = next((x for x in cfg["destinatarios"] if x["id"] == pid), None)
         if not d:
             raise RuntimeError("Esa persona ya no existe.")
-        if que == "automatico":
-            d["automatico"] = carga == "ON"
+        if que == "tipo":
+            tipo = next((k for k, v in TIPOS.items() if v == carga), None)
+            if not tipo:
+                raise RuntimeError("Tipo no válido")
+            d["automatico"], d["fijo"] = tipo == "semanal", tipo == "fijo"
+            if json.dumps(cfg, sort_keys=True, default=str) == antes:
+                return
             nk.guardar_config(cfg)
-            nk.registrar("Renovación automática " + ("activada" if d["automatico"] else "desactivada"),
-                         d["nombre"], "Desde Home Assistant")
+            nk.registrar("Persona modificada", d["nombre"], f"Desde Home Assistant · tipo: {carga}")
+            return
+        if que == "canal":
+            canal = next((k for k, v in CANALES.items() if v == carga), None)
+            if canal not in nk.CANALES_ENVIO:
+                raise RuntimeError("Canal no válido")
+            d["canal_envio"] = canal
+            if json.dumps(cfg, sort_keys=True, default=str) == antes:
+                return
+            nk.guardar_config(cfg)
+            nk.registrar("Persona modificada", d["nombre"], f"Desde Home Assistant · envío por {carga}")
+            return
+        if que in ("horario", "h_dias", "h_desde", "h_hasta"):
+            actual = d.get("franja") if (d.get("franja") or {}).get("activa") else None
+            f = dict(actual or d.get("franja_anterior") or FRANJA_INICIAL)
+            if que == "horario":
+                activa = carga == "ON"
+            else:
+                activa = bool(actual)
+                if que == "h_dias":
+                    f["dias"] = _leer_dias(carga)
+                elif carga not in (HORAS + ["23:59"]) and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", carga):
+                    raise RuntimeError("Hora no válida")
+                else:
+                    f["desde" if que == "h_desde" else "hasta"] = carga
+            f["activa"] = True
+            f = nk.validar_franja(f)  # comprueba días y que «hasta» sea después de «desde»
+            d["franja_anterior"] = f
+            nueva = f if activa else None
+            if nueva != actual:
+                if nueva:
+                    d["franja"] = nueva
+                else:
+                    d.pop("franja", None)
+                nk.aplicar_franja(cfg, d)
+                nk.registrar("Horario del código", d["nombre"],
+                             f"Desde Home Assistant · {nk.texto_franja(nueva) or 'a cualquier hora'}")
+            nk.guardar_config(cfg)
             return
         if que not in ("renovar", "invitado"):
             return

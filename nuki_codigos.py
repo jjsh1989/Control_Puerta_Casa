@@ -273,6 +273,19 @@ def texto_franja(f):
     return f"{dias}, {horas}"
 
 
+def aplicar_franja(cfg, persona):
+    """Si la persona ya tiene código en la cerradura, le cambia el horario sin cambiar el número."""
+    if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
+        return
+    nuki = Nuki(cfg["nuki"]["token"])
+    sid = cfg["nuki"]["smartlock_id"]
+    nombre_auth = nombre_auth_de(cfg, persona)
+    dias, de, a = franja_nuki(persona.get("franja"))
+    for auth in nuki.autorizaciones(sid):
+        if auth.get("type") == TIPO_CODIGO_TECLADO and auth.get("name") == nombre_auth and auth.get("enabled", True):
+            nuki.actualizar_auth(sid, auth, {"allowedWeekDays": dias, "allowedFromTime": de, "allowedUntilTime": a})
+
+
 def fecha_iso(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 

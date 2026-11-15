@@ -1391,15 +1391,7 @@ class Manejador(BaseHTTPRequestHandler):
     @staticmethod
     def _aplicar_franja(cfg, persona):
         """Si ya tiene código en la cerradura, le cambia el horario sin cambiar el número."""
-        if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
-            return
-        nuki = nk.Nuki(cfg["nuki"]["token"])
-        sid = cfg["nuki"]["smartlock_id"]
-        nombre_auth = nk.nombre_auth_de(cfg, persona)
-        dias, de, a = nk.franja_nuki(persona.get("franja"))
-        for auth in nuki.autorizaciones(sid):
-            if auth.get("type") == nk.TIPO_CODIGO_TECLADO and auth.get("name") == nombre_auth and auth.get("enabled", True):
-                nuki.actualizar_auth(sid, auth, {"allowedWeekDays": dias, "allowedFromTime": de, "allowedUntilTime": a})
+        nk.aplicar_franja(cfg, persona)
 
 
 def main():
