@@ -27,6 +27,7 @@ import bateria
 import camara
 import copias
 import dispositivos
+import ha
 import extras
 import telegram
 import cuentas
@@ -1021,6 +1022,14 @@ class Manejador(BaseHTTPRequestHandler):
             if datos.get("hacer"):
                 return self._ok({"texto": copias.hacer_copia(s.get("nombre") or s["usuario"]), **copias.ajustes()})
             return self._ok(copias.ajustes())
+        if ruta == "/api/admin/ha":
+            campos = {k: datos[k] for k in ("activo", "servidor", "puerto", "usuario", "prefijo", "password") if k in datos}
+            if campos:
+                ha.poner_ajustes(**campos)
+                nk.registrar("Home Assistant configurado", s.get("nombre") or s["usuario"],
+                             ", ".join(f"{k}: {'••••' if k == 'password' else v}" for k, v in campos.items()))
+                time.sleep(2)  # que le dé tiempo a conectar y el estado sea el real
+            return self._ok(ha.estado())
         if ruta == "/api/admin/dispositivos":
             quien = s.get("nombre") or s["usuario"]
             if datos.get("alta"):
@@ -1418,6 +1427,7 @@ def main():
     telegram.Escucha().start()
     camara.CLIENTE.start()
     camara.MEMORIA.start()
+    ha.PASARELA.start()
     camara.Limpieza().start()
     camara.VigilaCamaras().start()
     servidor = ThreadingHTTPServer((ESCUCHAR, PUERTO), Manejador)

@@ -99,6 +99,15 @@ Ajustes → **Comunicación** → *Correo*: servidor SMTP (con Gmail, usa una **
 2. Ajustes → **Cámaras** → *Cámara Eufy*: correo y contraseña de esa cuenta secundaria → **Guardar y conectar**.
 3. Si Eufy pide un **captcha** o un **código por correo**, el panel te lo muestra para que lo escribas.
 4. En la lista de cámaras: ⭐ **Predeterminada** (la que manda foto y clip en los avisos de la puerta), 📷 **Movimiento** (avisa al detectar movimiento o timbre) y la **casa** de cada una.
+5. En los ajustes de cada cámara (⚙️), **Grabar antes del aviso** (5, 10 o 15 s): el clip empieza esos segundos antes de que salte el aviso. Para ello el panel mantiene abierto el directo de esa cámara y guarda los últimos segundos en memoria (no ocupa disco, pero gasta algo de CPU y unos 3–7 GB al día de red local por cámara).
+
+### Home Assistant (opcional)
+El panel puede mandar a Home Assistant, por **MQTT**, los códigos del teclado y su renovación de todas las casas (los códigos en sí nunca se mandan):
+1. En Home Assistant: *Ajustes → Complementos* → instala y arranca **Mosquitto broker**. En su configuración, en *logins*, añade un usuario solo para el panel (p. ej. `puerta`) con una contraseña larga.
+2. *Ajustes → Dispositivos y servicios*: acepta la integración **MQTT** que aparece descubierta.
+3. En el panel: Ajustes → **Casas** → *Home Assistant*: IP de Home Assistant, puerto 1883, ese usuario y contraseña, marca *Conectar* y **Guardar**.
+4. En Home Assistant aparecen solos los dispositivos «Códigos · <casa>» (renovación semanal: encender, día, hora, días de validez, próxima y última, *Renovar todos ahora* y un evento para automatizaciones) y uno por persona (*Código activo*, *Caduca*, *Renovación automática*, *Renovar código* e *Invitado 24 h*).
+Lo que se haga desde Home Assistant queda en el historial del panel con el gestor «Home Assistant».
 
 ### Avisos
 Ajustes → **Comunicación** → *Avisos*: activa los que quieras (código incorrecto, de noche, puerta abierta X minutos, cerradura atascada, bloqueo, batería…) y si llevan clip de vídeo.

@@ -988,6 +988,23 @@
         </div>
         <div id="dvEnlace" class="ayuda" hidden></div>
       </div>
+      <div class="card solo-admin" data-grupo="casas" id="cardHA">
+        <div class="cab" style="margin-bottom:0"><h2>Home Assistant</h2><span class="chip" id="haChip"></span></div>
+        <p class="muted peq" style="margin:8px 0 12px">Manda a Home Assistant, por MQTT, los códigos del teclado y su renovación de todas las casas.
+          Allí aparecen solos: si cada código está activo y cuándo caduca, la renovación semanal (encender, día y hora), botones para renovar
+          y dar un código de invitado de 24 h, y un evento para automatizaciones. Los códigos en sí no se mandan nunca.</p>
+        <div class="rejilla">
+          <div><label for="ha_servidor">Servidor MQTT</label><input id="ha_servidor" placeholder="192.168.1.50" autocomplete="off"></div>
+          <div><label for="ha_puerto">Puerto</label><input id="ha_puerto" type="number" min="1" max="65535" placeholder="1883"></div>
+          <div><label for="ha_usuario">Usuario</label><input id="ha_usuario" autocomplete="off"></div>
+          <div><label for="ha_password">Contraseña</label><input id="ha_password" type="password" autocomplete="new-password"></div>
+          <div><label for="ha_prefijo">Prefijo de descubrimiento</label><input id="ha_prefijo" placeholder="homeassistant">
+            <div class="ayuda">Déjalo como está salvo que lo hayas cambiado en Home Assistant.</div></div>
+        </div>
+        <label class="interruptor" style="margin-top:8px"><input type="checkbox" id="ha_activo"> Conectar con Home Assistant</label>
+        <div id="haEstado" class="ayuda"></div>
+        <div class="acciones" style="margin-top:12px"><button type="button" class="principal" onclick="guardarHA(this)">Guardar</button></div>
+      </div>
       <div class="card solo-admin" data-grupo="casas" id="cardCasas">
         <div class="cab"><h2>Casas y usuarios</h2>
           <div class="acciones">
@@ -2221,6 +2238,25 @@ function pintarDispositivos(r) {
     + (r.pendientes ? `<div class="ayuda">${r.pendientes} enlace${r.pendientes === 1 ? "" : "s"} sin usar todavía.
         <a href="#" onclick="cancelarEnlacesDisp(event)">Anularlos</a></div>` : "");
 }
+function pintarHA(r) {
+  $("ha_servidor").value = r.servidor || ""; $("ha_puerto").value = r.puerto || 1883; $("ha_usuario").value = r.usuario || "";
+  $("ha_prefijo").value = r.prefijo || "homeassistant"; $("ha_activo").checked = !!r.activo; $("ha_password").value = "";
+  $("ha_password").placeholder = r.password_puesta ? "Puesta (vacío = no cambiar)" : "";
+  $("haChip").textContent = !r.activo ? "Apagado" : r.conectado ? "Conectado" : "Sin conexión";
+  $("haEstado").innerHTML = r.activo && r.error ? `⚠️ ${esc(r.error)}` : r.conectado ? "✅ Conectado: en Home Assistant busca los dispositivos «Códigos · …» en la integración MQTT." : "";
+}
+async function cargarHA() {
+  try { pintarHA((await api("POST", "/api/admin/ha", {})).resultado); }
+  catch (e) { $("haEstado").innerHTML = `⚠️ ${esc(e.message)}`; }
+}
+async function guardarHA(b) {
+  await conBoton(b, async () => {
+    const d = {activo: $("ha_activo").checked, servidor: $("ha_servidor").value.trim(), puerto: +$("ha_puerto").value || 1883,
+               usuario: $("ha_usuario").value.trim(), prefijo: $("ha_prefijo").value.trim()};
+    if ($("ha_password").value) d.password = $("ha_password").value;
+    pintarHA((await api("POST", "/api/admin/ha", d)).resultado); aviso("Guardado");
+  });
+}
 async function cargarDispositivos() {
   try { pintarDispositivos((await api("POST", "/api/admin/dispositivos", {})).resultado); }
   catch (e) { $("dvLista").innerHTML = `<div class="muted peq">⚠️ ${esc(e.message)}</div>`; $("dvChip").textContent = ""; }
@@ -3010,7 +3046,7 @@ async function cargarAjustes() {
   pintarReglas();
   pintarTgAvisos();
   pintarExtras();
-  if (YO?.rol === "admin") { cargarCopias().catch(() => {}); cargarDispositivos(); }
+  if (YO?.rol === "admin") { cargarCopias().catch(() => {}); cargarDispositivos(); cargarHA(); }
   mostrarProveedor();
   pintarBateria();
   cargarSmtp().catch(() => {});

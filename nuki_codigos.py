@@ -63,6 +63,9 @@ MENSAJE_INVITADO = ("Código de acceso temporal: {codigo}. Válido hasta el {has
 
 # ---------------------------------------------------------------- utilidades
 
+OYENTES_REGISTRO = []  # funciones que se enteran de cada entrada del historial (p. ej. Home Assistant)
+
+
 def registrar(accion, usuario="", detalle="", simulado=False, ok=True):
     """Añade una entrada al historial de gestión."""
     entrada = {
@@ -76,6 +79,11 @@ def registrar(accion, usuario="", detalle="", simulado=False, ok=True):
             f.write(json.dumps(entrada, ensure_ascii=False) + "\n")
     except OSError:
         pass
+    for oyente in OYENTES_REGISTRO:
+        try:
+            oyente(entrada)
+        except Exception:
+            pass
 
 
 def leer_gestion(limite=500):
