@@ -559,6 +559,8 @@ class Cliente(threading.Thread):
         self.foto_nueva = threading.Condition()
         self.oyentes = {}               # serial -> set de funciones que reciben (bytes, metadata) del directo
         self.cerrojo_directo = threading.Lock()
+        self.orden_directo = {}         # serial -> Lock: nunca dos órdenes de directo a la vez a la misma cámara
+        self.emitiendo = set()          # seriales con el directo pedido por el panel y en marcha
         self.bloqueo_clip = {}
         self.ultimo_aviso = {}
         self.visitas = {}  # sn -> el último aviso de movimiento, para juntar las detecciones seguidas
@@ -711,6 +713,7 @@ class Cliente(threading.Thread):
                 except Exception:
                     pass
         elif nombre == "livestream stopped":
+            self.emitiendo.discard(sn)  # el siguiente que se una lo vuelve a pedir
             for f in list(self.oyentes.get(sn, ())):
                 try:
                     f(None, {})  # aviso de fin
@@ -733,17 +736,57 @@ class Cliente(threading.Thread):
         return None
 
     # ---------- directo compartido (clips y vista en directo usan la misma emisión)
-    def unirse(self, sn, funcion):
+    def _cerrojo_orden(self, sn):
         with self.cerrojo_directo:
-            primero = not self.oyentes.get(sn)
-            self.oyentes.setdefault(sn, set()).add(funcion)
-        if primero:
+            return self.orden_directo.setdefault(sn, threading.Lock())
+
+    def _pedir_directo(self, sn):
+        """Pide el directo si no está ya en marcha. Las órdenes a una cámara van de una en una: dos
+        peticiones solapadas pueden dejarla con una sesión de cifrado que no casa y sin mandar vídeo."""
+        with self._cerrojo_orden(sn):
+            if sn in self.emitiendo:
+                return
             try:
                 self.comando("device.start_livestream", timeout=40, serialNumber=sn)
             except RuntimeError as e:
                 if "already" not in str(e).lower():
-                    self.salir(sn, funcion, parar=False)
                     raise
+            self.emitiendo.add(sn)
+
+    def _cortar_directo(self, sn):
+        with self._cerrojo_orden(sn):
+            if self.oyentes.get(sn):
+                return  # alguien se unió mientras tanto
+            self.emitiendo.discard(sn)
+            try:
+                self.comando("device.stop_livestream", timeout=15, serialNumber=sn)
+            except Exception:
+                pass
+
+    def reiniciar_directo(self, sn):
+        """Para y vuelve a pedir el directo (para quien siga unido), sin solaparse con otras órdenes."""
+        with self._cerrojo_orden(sn):
+            self.emitiendo.discard(sn)
+            try:
+                self.comando("device.stop_livestream", timeout=15, serialNumber=sn)
+            except Exception:
+                pass
+            time.sleep(2)
+            try:
+                self.comando("device.start_livestream", timeout=40, serialNumber=sn)
+            except RuntimeError as e:
+                if "already" not in str(e).lower():
+                    raise
+            self.emitiendo.add(sn)
+
+    def unirse(self, sn, funcion):
+        with self.cerrojo_directo:
+            self.oyentes.setdefault(sn, set()).add(funcion)
+        try:
+            self._pedir_directo(sn)
+        except Exception:
+            self.salir(sn, funcion, parar=False)
+            raise
 
     def salir(self, sn, funcion, parar=True):
         with self.cerrojo_directo:
@@ -753,10 +796,7 @@ class Cliente(threading.Thread):
             if ultimo:
                 self.oyentes.pop(sn, None)
         if ultimo and parar:
-            try:
-                self.comando("device.stop_livestream", timeout=15, serialNumber=sn)
-            except Exception:
-                pass
+            self._cortar_directo(sn)
 
     def clip(self, sn, segundos=SEGUNDOS_CLIP, desde=None):
         """Graba unos segundos del directo y devuelve el MP4 (bytes) o None.
@@ -927,6 +967,8 @@ class Memoria(threading.Thread):
     los últimos segundos (nada en disco). Si la emisión se corta, la vuelve a pedir."""
     REVISAR = 10
     CORTADA = 20  # segundos sin vídeo para darla por cortada
+    INTENTOS = 3  # reanudaciones seguidas sin vídeo antes de dejar descansar a la cámara
+    DESCANSO = 1800
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -937,6 +979,7 @@ class Memoria(threading.Thread):
         self.proximo = {}   # sn -> cuándo toca el siguiente intento de reanudar (cada vez se espera más)
         self.fallando = set()
         self.sin_video = {}  # sn -> veces seguidas que se reanudó sin que llegara vídeo
+        self.descanso = {}   # sn -> hasta cuándo no se le pide el directo (no mandaba vídeo)
         self.cerrojo = threading.Lock()
 
     def viva(self, sn):
@@ -952,7 +995,9 @@ class Memoria(threading.Thread):
             time.sleep(self.REVISAR)
 
     def _revisar(self):
-        quiero = {sn for sn in CLIENTE.dispositivos if ajustes_camara(sn)["previo"]} if CLIENTE.driver else set()
+        ahora = time.time()
+        quiero = {sn for sn in CLIENTE.dispositivos if ajustes_camara(sn)["previo"]
+                  and self.descanso.get(sn, 0) <= ahora} if CLIENTE.driver else set()
         for sn in list(self.oyentes):
             if sn not in quiero:
                 self._parar(sn)
@@ -981,7 +1026,7 @@ class Memoria(threading.Thread):
                 self._recortar(cola, ahora - ajustes_camara(sn)["previo"] - SEGUNDOS_CLIP - 20)
             self.ultimo[sn] = ahora
             self.proximo.pop(sn, None)
-            if self.sin_video.pop(sn, 0) >= 3:
+            if self.sin_video.pop(sn, 0) >= 2:
                 nk.log(f"Eufy: «{self._nombre(sn)}» vuelve a mandar vídeo")
         self.trozos[sn], self.ultimo[sn] = cola, time.time()
         self.sin_video.pop(sn, None)
@@ -1010,31 +1055,37 @@ class Memoria(threading.Thread):
 
     def _reanudar(self, sn):
         n = self.sin_video[sn] = self.sin_video.get(sn, 0) + 1
-        # 20 s, 40 s, 80 s… hasta 10 min: si la cámara no responde, insistir solo atasca la cola de órdenes del puente
-        self.proximo[sn] = time.time() + min(600, self.CORTADA * 2 ** (n - 1))
-        if n == 3:
-            nk.log(f"Eufy: «{self._nombre(sn)}» tiene el directo abierto pero no manda vídeo: los avisos irán sin clip. "
-                   "Si sigue así, reinicia la cámara (Ajustes de la cámara o la app de Eufy).")
-        for orden in ("device.stop_livestream", "device.start_livestream"):
-            try:
-                CLIENTE.comando(orden, timeout=40, serialNumber=sn)
-            except Exception as e:
-                if orden.endswith("start_livestream") and "already" not in str(e).lower() and sn not in self.fallando:
-                    self.fallando.add(sn)
-                    nk.log(f"Eufy: el directo de «{self._nombre(sn)}» se cortó y no se puede reanudar ({e})")
-                    return
+        if n > self.INTENTOS:
+            # insistir es lo que atasca a la cámara: se suelta el directo y se deja en paz un rato;
+            # mientras, los avisos graban el clip desde el momento del aviso, como sin «Grabar antes»
+            self._parar(sn, aviso=False)
+            self.sin_video.pop(sn, None)
+            self.descanso[sn] = time.time() + self.DESCANSO
+            nk.log(f"Eufy: «{self._nombre(sn)}» no manda vídeo; se deja de grabar antes del aviso durante "
+                   f"{self.DESCANSO // 60} min y se vuelve a probar después. Si pasa a menudo, reinicia la cámara.")
+            return
+        # 20 s, 40 s, 80 s: la cola de órdenes del puente no debe llenarse de reintentos
+        self.proximo[sn] = time.time() + self.CORTADA * 2 ** (n - 1)
+        try:
+            CLIENTE.reiniciar_directo(sn)
+        except Exception as e:
+            if sn not in self.fallando:
+                self.fallando.add(sn)
+                nk.log(f"Eufy: el directo de «{self._nombre(sn)}» se cortó y no se puede reanudar ({e})")
+            return
         if sn in self.fallando:
             self.fallando.discard(sn)
             nk.log(f"Eufy: el directo de «{self._nombre(sn)}» vuelve a guardarse en memoria")
 
-    def _parar(self, sn):
+    def _parar(self, sn, aviso=True):
         f = self.oyentes.pop(sn, None)
         self.trozos.pop(sn, None)
         self.proximo.pop(sn, None)
         self.fallando.discard(sn)
         if f:
             CLIENTE.salir(sn, f)
-            nk.log(f"Eufy: «{self._nombre(sn)}» deja de guardar en memoria los segundos antes de cada aviso")
+            if aviso:
+                nk.log(f"Eufy: «{self._nombre(sn)}» deja de guardar en memoria los segundos antes de cada aviso")
 
     def clip(self, sn, desde, segundos):
         """Clip desde «previo» segundos antes de «desde» hasta «segundos» después (espera a que pasen)."""
