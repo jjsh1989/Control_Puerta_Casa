@@ -933,7 +933,8 @@ class Memoria(threading.Thread):
         self.oyentes = {}   # sn -> función que recibe el directo
         self.trozos = {}    # sn -> deque de (momento, bytes, es_clave)
         self.meta = {}
-        self.ultimo = {}    # sn -> momento del último trozo (o del último intento de reanudar)
+        self.ultimo = {}    # sn -> momento del último trozo de vídeo
+        self.proximo = {}   # sn -> cuándo toca el siguiente intento de reanudar (cada vez se espera más)
         self.fallando = set()
         self.sin_video = {}  # sn -> veces seguidas que se reanudó sin que llegara vídeo
         self.cerrojo = threading.Lock()
@@ -958,7 +959,7 @@ class Memoria(threading.Thread):
         for sn in quiero:
             if sn not in self.oyentes:
                 self._empezar(sn)
-            elif time.time() - self.ultimo.get(sn, 0) > self.CORTADA:
+            elif time.time() - self.ultimo.get(sn, 0) > self.CORTADA and time.time() >= self.proximo.get(sn, 0):
                 self._reanudar(sn)
 
     def _nombre(self, sn):
@@ -979,9 +980,12 @@ class Memoria(threading.Thread):
                 cola.append((ahora, trozo, _es_clave(trozo, hevc["v"])))
                 self._recortar(cola, ahora - ajustes_camara(sn)["previo"] - SEGUNDOS_CLIP - 20)
             self.ultimo[sn] = ahora
+            self.proximo.pop(sn, None)
             if self.sin_video.pop(sn, 0) >= 3:
                 nk.log(f"Eufy: «{self._nombre(sn)}» vuelve a mandar vídeo")
         self.trozos[sn], self.ultimo[sn] = cola, time.time()
+        self.sin_video.pop(sn, None)
+        self.proximo.pop(sn, None)
         try:
             CLIENTE.unirse(sn, recibir)
         except Exception as e:
@@ -1005,8 +1009,9 @@ class Memoria(threading.Thread):
                 cola.popleft()
 
     def _reanudar(self, sn):
-        self.ultimo[sn] = time.time()  # el próximo intento, dentro de CORTADA segundos
         n = self.sin_video[sn] = self.sin_video.get(sn, 0) + 1
+        # 20 s, 40 s, 80 s… hasta 10 min: si la cámara no responde, insistir solo atasca la cola de órdenes del puente
+        self.proximo[sn] = time.time() + min(600, self.CORTADA * 2 ** (n - 1))
         if n == 3:
             nk.log(f"Eufy: «{self._nombre(sn)}» tiene el directo abierto pero no manda vídeo: los avisos irán sin clip. "
                    "Si sigue así, reinicia la cámara (Ajustes de la cámara o la app de Eufy).")
@@ -1025,6 +1030,7 @@ class Memoria(threading.Thread):
     def _parar(self, sn):
         f = self.oyentes.pop(sn, None)
         self.trozos.pop(sn, None)
+        self.proximo.pop(sn, None)
         self.fallando.discard(sn)
         if f:
             CLIENTE.salir(sn, f)
@@ -1074,6 +1080,22 @@ def _a_mp4(crudo, meta):
             nk.log(f"Eufy: ffmpeg falló: {r.stderr.decode(errors='replace')[:300]}")
             return None
         return salida.read_bytes()
+
+
+CLIP_MINIMO = 2.0  # segundos: un clip más corto no se guarda ni se manda (Telegram lo enseña como «0 s» y no carga)
+
+
+def _duracion(mp4):
+    """Segundos que dura un MP4 (0 si no se puede leer)."""
+    with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+        f.write(mp4)
+        f.flush()
+        try:
+            r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f.name],
+                               capture_output=True, text=True, timeout=30)
+            return float(r.stdout.strip() or 0)
+        except (ValueError, subprocess.SubprocessError):
+            return 0.0
 
 
 # ---------------------------------------------------------------- avisos con foto y clip
@@ -1142,6 +1164,9 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
     if con_clip and sn and CLIENTE.driver:
         def grabar():
             mp4 = CLIENTE.clip(sn, desde=momento.timestamp())
+            if mp4 and _duracion(mp4) < CLIP_MINIMO:
+                nk.log(f"Eufy: el clip del aviso de las {momento:%H:%M:%S} dura {_duracion(mp4):.1f} s; no se manda")
+                mp4 = None
             if not mp4:
                 nk.log(f"Eufy: el aviso de las {momento:%H:%M:%S} va sin clip: no llegó vídeo de "
                        f"«{CLIENTE.dispositivos.get(sn, {}).get('nombre', sn)}»")
