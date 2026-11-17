@@ -935,6 +935,7 @@ class Memoria(threading.Thread):
         self.meta = {}
         self.ultimo = {}    # sn -> momento del último trozo (o del último intento de reanudar)
         self.fallando = set()
+        self.sin_video = {}  # sn -> veces seguidas que se reanudó sin que llegara vídeo
         self.cerrojo = threading.Lock()
 
     def viva(self, sn):
@@ -978,6 +979,8 @@ class Memoria(threading.Thread):
                 cola.append((ahora, trozo, _es_clave(trozo, hevc["v"])))
                 self._recortar(cola, ahora - ajustes_camara(sn)["previo"] - SEGUNDOS_CLIP - 20)
             self.ultimo[sn] = ahora
+            if self.sin_video.pop(sn, 0) >= 3:
+                nk.log(f"Eufy: «{self._nombre(sn)}» vuelve a mandar vídeo")
         self.trozos[sn], self.ultimo[sn] = cola, time.time()
         try:
             CLIENTE.unirse(sn, recibir)
@@ -1003,6 +1006,10 @@ class Memoria(threading.Thread):
 
     def _reanudar(self, sn):
         self.ultimo[sn] = time.time()  # el próximo intento, dentro de CORTADA segundos
+        n = self.sin_video[sn] = self.sin_video.get(sn, 0) + 1
+        if n == 3:
+            nk.log(f"Eufy: «{self._nombre(sn)}» tiene el directo abierto pero no manda vídeo: los avisos irán sin clip. "
+                   "Si sigue así, reinicia la cámara (Ajustes de la cámara o la app de Eufy).")
         for orden in ("device.stop_livestream", "device.start_livestream"):
             try:
                 CLIENTE.comando(orden, timeout=40, serialNumber=sn)
@@ -1136,6 +1143,8 @@ def enviar_con_camara(cfg, tipo, detalle, momento, ident_existente=None, foto=No
         def grabar():
             mp4 = CLIENTE.clip(sn, desde=momento.timestamp())
             if not mp4:
+                nk.log(f"Eufy: el aviso de las {momento:%H:%M:%S} va sin clip: no llegó vídeo de "
+                       f"«{CLIENTE.dispositivos.get(sn, {}).get('nombre', sn)}»")
                 return
             (carpeta(cuenta) / f"{ident}.mp4").write_bytes(mp4)
             actualizar_evento(cuenta, ident, clip=f"{ident}.mp4")
