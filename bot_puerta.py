@@ -572,6 +572,12 @@ def mensaje(m, texto, chat):
             _elegir_camara(chat, cuenta, nombre_casa)
         return True
 
+    if texto.split("@")[0] in ("/reiniciar_camaras", "/reiniciar"):
+        if not casas_de(chat):
+            return False
+        _reiniciar_camaras(chat)
+        return True
+
     if texto.split("@")[0] in ("/puerta", "/start", "/menu"):
         casas = casas_de(chat)
         if not casas:
@@ -584,12 +590,43 @@ def mensaje(m, texto, chat):
     return False
 
 
+def _reiniciar_camaras(chat):
+    import camara
+    import waha
+    cuenta, u = _admin(chat)
+    if not u:
+        telegram.enviar(chat, "Solo un administrador del panel puede reiniciar el servicio de las cámaras.")
+        return
+    quien = u.get("nombre") or u["usuario"]
+    with cuentas.en_cuenta(cuenta, u["usuario"]):
+        nk.registrar("Reinicio del servicio de las cámaras (Telegram)", quien, "")
+    telegram.enviar(chat, "🔄 Reiniciando el servicio de las cámaras… Durante un minuto no llegarán avisos.")
+
+    def hacer():
+        try:
+            waha.accion_contenedor("reiniciar", camara.CONTENEDOR)
+        except Exception as e:
+            telegram.enviar(chat, f"⚠️ No se pudo reiniciar: {e}")
+            return
+        time.sleep(10)  # que el cliente note la caída antes de esperar a que vuelva
+        fin = time.time() + 120
+        while time.time() < fin and not (camara.CLIENTE.driver and camara.CLIENTE.dispositivos):
+            time.sleep(2)
+        if camara.CLIENTE.driver:
+            telegram.enviar(chat, f"✅ Cámaras conectadas de nuevo ({len(camara.CLIENTE.dispositivos)}).")
+        else:
+            telegram.enviar(chat, "⚠️ El servicio de las cámaras no ha vuelto a conectar en 2 minutos. "
+                                  "Míralo en el panel.")
+    threading.Thread(target=hacer, daemon=True).start()
+
+
 def preparar():
     """Pone la orden /puerta en el menú del bot."""
     try:
         telegram._api("setMyCommands", {"commands": [{"command": "puerta", "description": "Estado y control de la puerta"},
                                                      {"command": "camara", "description": "Ver una cámara ahora"},
                                                      {"command": "codigo", "description": "Dar un código temporal"},
+                                                     {"command": "reiniciar_camaras", "description": "Reiniciar el servicio de las cámaras (admin)"},
                                                      {"command": "dispositivo", "description": "Recordar u olvidar un móvil (admin)"}]})
     except Exception as e:
         nk.log(f"Telegram: no se pudo poner el menú del bot: {e}")
