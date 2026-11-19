@@ -970,6 +970,7 @@ class Memoria(threading.Thread):
     CORTADA = 20  # segundos sin vídeo para darla por cortada
     INTENTOS = 3  # reanudaciones seguidas sin vídeo antes de reiniciar el puente
     ENTRE_REINICIOS = 3600  # como mucho un reinicio automático del puente por hora
+    ENTRE_REINICIOS_CAMARA = 3 * 3600  # y de cada cámara, uno cada 3 horas
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -982,6 +983,8 @@ class Memoria(threading.Thread):
         self.sin_video = {}  # sn -> veces seguidas que se reanudó sin que llegara vídeo
         self.descanso = {}   # sn -> hasta cuándo no se le pide el directo (no mandaba vídeo)
         self.reinicio_puente = 0
+        self.reinicio_camara = {}  # sn -> cuándo se reinició la cámara por última vez
+        self.tras_puente = set()   # cámaras que siguieron sin vídeo después de reiniciar el puente
         self.cerrojo = threading.Lock()
 
     def viva(self, sn):
@@ -1028,6 +1031,7 @@ class Memoria(threading.Thread):
                 self._recortar(cola, ahora - ajustes_camara(sn)["previo"] - SEGUNDOS_CLIP - 20)
             self.ultimo[sn] = ahora
             self.proximo.pop(sn, None)
+            self.tras_puente.discard(sn)
             if self.sin_video.pop(sn, 0) >= 2:
                 nk.log(f"Eufy: «{self._nombre(sn)}» vuelve a mandar vídeo")
         self.trozos[sn], self.ultimo[sn] = cola, time.time()
@@ -1058,25 +1062,24 @@ class Memoria(threading.Thread):
     def _reanudar(self, sn):
         n = self.sin_video[sn] = self.sin_video.get(sn, 0) + 1
         if n > self.INTENTOS:
-            # la conexión del puente con la cámara se queda atascada (las órdenes caducan en su cola) y
-            # solo se arregla reiniciando el puente; insistir con el directo no sirve de nada
+            # Insistir con el directo no sirve. Primero se reinicia el puente (a veces es su conexión la que
+            # se atasca); si después sigue sin vídeo, el atasco está dentro de la cámara y hay que reiniciarla.
             self._parar(sn, aviso=False)
             self.sin_video.pop(sn, None)
             ahora = time.time()
-            if ahora - self.reinicio_puente >= self.ENTRE_REINICIOS:
-                self.reinicio_puente = ahora
-                self.descanso[sn] = ahora + 90  # que el puente arranque y vuelva a conectar
-                nk.log(f"Eufy: «{self._nombre(sn)}» no manda vídeo; se reinicia el servicio de las cámaras")
-                try:
-                    import waha
-                    waha.accion_contenedor("reiniciar", CONTENEDOR)
-                except Exception as e:
-                    nk.log(f"Eufy: no se pudo reiniciar el servicio de las cámaras ({e})")
+            puede_puente = ahora - self.reinicio_puente >= self.ENTRE_REINICIOS
+            puede_camara = ahora - self.reinicio_camara.get(sn, 0) >= self.ENTRE_REINICIOS_CAMARA
+            if sn in self.tras_puente and puede_camara:
+                self._reiniciar_camara(sn)
+            elif puede_puente and sn not in self.tras_puente:
+                self._reiniciar_puente(sn)
+            elif puede_camara:
+                self._reiniciar_camara(sn)
             else:
-                self.descanso[sn] = self.reinicio_puente + self.ENTRE_REINICIOS
+                self.descanso[sn] = min(self.reinicio_puente + self.ENTRE_REINICIOS,
+                                        self.reinicio_camara.get(sn, 0) + self.ENTRE_REINICIOS_CAMARA)
                 nk.log(f"Eufy: «{self._nombre(sn)}» sigue sin mandar vídeo; se deja de grabar antes del aviso "
-                       f"hasta las {datetime.fromtimestamp(self.descanso[sn]):%H:%M}, cuando se reiniciará otra vez "
-                       "el servicio de las cámaras. Si pasa a menudo, reinicia la cámara.")
+                       f"hasta las {datetime.fromtimestamp(self.descanso[sn]):%H:%M} y entonces se vuelve a probar.")
             return
         # 20 s, 40 s, 80 s: la cola de órdenes del puente no debe llenarse de reintentos
         self.proximo[sn] = time.time() + self.CORTADA * 2 ** (n - 1)
@@ -1090,6 +1093,27 @@ class Memoria(threading.Thread):
         if sn in self.fallando:
             self.fallando.discard(sn)
             nk.log(f"Eufy: el directo de «{self._nombre(sn)}» vuelve a guardarse en memoria")
+
+    def _reiniciar_puente(self, sn):
+        self.reinicio_puente = time.time()
+        self.tras_puente.add(sn)
+        self.descanso[sn] = self.reinicio_puente + 90  # que el puente arranque y vuelva a conectar
+        nk.log(f"Eufy: «{self._nombre(sn)}» no manda vídeo; se reinicia el servicio de las cámaras")
+        try:
+            import waha
+            waha.accion_contenedor("reiniciar", CONTENEDOR)
+        except Exception as e:
+            nk.log(f"Eufy: no se pudo reiniciar el servicio de las cámaras ({e})")
+
+    def _reiniciar_camara(self, sn):
+        self.reinicio_camara[sn] = time.time()
+        self.tras_puente.discard(sn)
+        self.descanso[sn] = time.time() + 240  # tarda un par de minutos en volver
+        nk.log(f"Eufy: «{self._nombre(sn)}» sigue sin mandar vídeo; se reinicia la cámara")
+        try:
+            CLIENTE.comando("station.reboot", timeout=40, serialNumber=CLIENTE.estacion_de.get(sn, sn))
+        except Exception as e:
+            nk.log(f"Eufy: no se pudo reiniciar «{self._nombre(sn)}» ({e})")
 
     def _parar(self, sn, aviso=True):
         f = self.oyentes.pop(sn, None)
