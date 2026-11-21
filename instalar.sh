@@ -50,7 +50,9 @@ chmod 700 datos secretos; chmod 400 secretos/clave_maestra
 # Ajustes del servidor
 if [ ! -f .env ]; then
   ARQ=$(uname -m)
-  IMAGEN="devlikeapro/waha:noweb"; [ "$ARQ" = "aarch64" ] || [ "$ARQ" = "arm64" ] && IMAGEN="devlikeapro/waha:noweb-arm"
+  # WhatsApp con versión fija (la probada); en ARM no hay versión probada y se usa la última
+  IMAGEN="devlikeapro/waha:noweb@sha256:0d64cce14a922f61bb9a620474086d1f5695f2522e7e1088704e6eca3a085d0c"
+  if [ "$ARQ" = "aarch64" ] || [ "$ARQ" = "arm64" ]; then IMAGEN="devlikeapro/waha:noweb-arm"; fi
   cat > .env <<EOF
 TZ=Europe/Madrid
 PANEL_PUERTO_HOST=8790

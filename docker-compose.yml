@@ -38,8 +38,9 @@ services:
     tmpfs: ["/tmp"]
 
   waha:
-    # Motor NOWEB: no lleva navegador dentro, consume muy poca memoria
-    image: ${WAHA_IMAGEN:-devlikeapro/waha:noweb}
+    # Motor NOWEB: no lleva navegador dentro, consume muy poca memoria.
+    # Versión fija (publicada el 28-10-2026) para que no se instale sola una nueva sin probarla.
+    image: ${WAHA_IMAGEN:-devlikeapro/waha:noweb@sha256:0d64cce14a922f61bb9a620474086d1f5695f2522e7e1088704e6eca3a085d0c}
     container_name: puerta-waha
     restart: unless-stopped
     environment:
