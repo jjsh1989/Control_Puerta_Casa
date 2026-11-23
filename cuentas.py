@@ -267,6 +267,16 @@ def hay_usuarios():
     return bool(leer_usuarios())
 
 
+def _nueva_generacion():
+    """Marca aleatoria de las sesiones de un usuario. Al cambiarla, todas sus sesiones abiertas dejan de valer
+    (también tras reiniciar el panel o si el cambio se hizo desde la consola en otro proceso)."""
+    return secrets.token_hex(8)
+
+
+def generacion_sesiones(u):
+    return (u or {}).get("sesiones_gen", "")
+
+
 def buscar_usuario(usuario):
     usuario = (usuario or "").strip().lower()
     return next((u for u in leer_usuarios() if u["usuario"] == usuario), None)
@@ -287,7 +297,7 @@ def crear_usuario(usuario, nombre, password, rol, cuenta):
             raise RuntimeError("Ese nombre de usuario ya existe.")
         lista.append({"usuario": usuario, "nombre": (nombre or usuario).strip(), "rol": rol,
                       "cuenta": cuenta, "creado": datetime.now().isoformat(timespec="seconds"),
-                      **_hash(password)})
+                      "sesiones_gen": _nueva_generacion(), **_hash(password)})
         _guardar_usuarios(lista)
 
 
@@ -301,14 +311,16 @@ def verificar_password(usuario, password):
 
 
 def cambiar_password(usuario, nueva):
+    """Cambia la contraseña y anula todas las sesiones del usuario. Devuelve la marca nueva de sesiones."""
     validar_password(nueva)
     with _cerrojo:
         lista = leer_usuarios()
         for u in lista:
             if u["usuario"] == usuario:
                 u.update(_hash(nueva))
+                u["sesiones_gen"] = _nueva_generacion()
                 _guardar_usuarios(lista)
-                return
+                return u["sesiones_gen"]
     raise RuntimeError("Usuario no encontrado.")
 
 
@@ -377,19 +389,23 @@ def comprobar_pin(usuario, pin):
 
 
 def modificar_usuario(usuario, **cambios):
+    """Si cambia el rol o la cuenta (vivienda), anula todas las sesiones del usuario. Devuelve la marca de sesiones."""
     with _cerrojo:
         lista = leer_usuarios()
         for u in lista:
             if u["usuario"] == usuario:
-                if "cuenta" in cambios and not existe_cuenta(cambios["cuenta"]):
+                if cambios.get("cuenta") is not None and not existe_cuenta(cambios["cuenta"]):
                     raise RuntimeError("La cuenta no existe.")
                 if cambios.get("rol") not in (None, "admin", "gestor"):
                     raise RuntimeError("Rol no válido.")
+                antes = (u.get("rol"), u.get("cuenta"))
                 u.update({k: v for k, v in cambios.items() if v is not None})
                 if not any(x["rol"] == "admin" for x in lista):
                     raise RuntimeError("Tiene que quedar al menos un administrador.")
+                if (u.get("rol"), u.get("cuenta")) != antes:
+                    u["sesiones_gen"] = _nueva_generacion()
                 _guardar_usuarios(lista)
-                return
+                return generacion_sesiones(u)
     raise RuntimeError("Usuario no encontrado.")
 
 

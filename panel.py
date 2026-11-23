@@ -73,6 +73,15 @@ def cargar_sesiones():
     SESIONES.update({k: v for k, v in datos.items() if ahora - v.get("ultimo", 0) < INACTIVIDAD_MAX})
 
 
+def cerrar_sesiones(usuario, salvo=None):
+    """Cierra todas las sesiones abiertas de un usuario (menos `salvo`) y lo guarda en disco.
+    Aunque esto no se llamara, una sesión con la marca antigua (cuentas.generacion_sesiones) ya no vale."""
+    with _cerrojo:
+        for t in [t for t, x in SESIONES.items() if x["usuario"] == usuario and t != salvo]:
+            SESIONES.pop(t)
+    guardar_sesiones()
+
+
 def guardar_sesiones():
     with _cerrojo:
         datos = json.dumps({k: {x: y for x, y in v.items() if x != "token"} for k, v in SESIONES.items()})
@@ -428,9 +437,17 @@ class Manejador(BaseHTTPRequestHandler):
             if not s:
                 return None
             limite = min(INACTIVIDAD_MAX, s.get("limite") or INACTIVIDAD_MAX)
-            if time.time() - s["ultimo"] > limite or not cuentas.buscar_usuario(s["usuario"]):
+            u = cuentas.buscar_usuario(s["usuario"])
+            # El usuario se borró, cambió de contraseña, de rol o de vivienda (aquí o desde la consola):
+            # la sesión deja de valer. Así un usuario nuevo con el mismo nombre tampoco hereda sesiones.
+            if (time.time() - s["ultimo"] > limite or not u
+                    or s.get("gen", "") != cuentas.generacion_sesiones(u)):
                 SESIONES.pop(clave, None)
                 return None
+            # El rol y la vivienda se toman siempre de los datos actuales del usuario.
+            s["rol"] = u["rol"]
+            if u["rol"] != "admin":  # el administrador puede estar mirando otra cuenta
+                s["cuenta"] = u["cuenta"]
             s["ultimo"] = time.time()
             s["token"] = clave
             return s
@@ -514,7 +531,7 @@ class Manejador(BaseHTTPRequestHandler):
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         with _cerrojo:
             SESIONES[_h(token)] = {"usuario": u["usuario"], "rol": u["rol"], "cuenta": u["cuenta"],
-                                   "csrf": csrf, "ultimo": time.time(),
+                                   "gen": cuentas.generacion_sesiones(u), "csrf": csrf, "ultimo": time.time(),
                                    "limite": minutos_inactividad(u) * 60 + 90}  # + margen; el aviso lo da la página
         threading.Thread(target=guardar_sesiones, daemon=True).start()
         segura = "; Secure" if self._es_https() else ""
@@ -598,9 +615,7 @@ class Manejador(BaseHTTPRequestHandler):
         cuentas.cambiar_password(usuario, datos.get("nueva") or "")  # valida la contraseña nueva
         RECUPERACION.pop(usuario, None)
         FALLOS.pop(usuario, None)
-        with _cerrojo:  # cierra todas las sesiones de ese usuario
-            for t in [t for t, x in SESIONES.items() if x["usuario"] == usuario]:
-                SESIONES.pop(t)
+        cerrar_sesiones(usuario)
         u = cuentas.buscar_usuario(usuario)
         with cuentas.en_cuenta(u["cuenta"], usuario):
             nk.registrar("Contraseña recuperada", usuario, "Con código de recuperación")
@@ -664,10 +679,9 @@ class Manejador(BaseHTTPRequestHandler):
         if metodo == "POST" and ruta == "/api/cambiar-password":
             if not cuentas.verificar_password(s["usuario"], datos.get("actual") or ""):
                 raise RuntimeError("La contraseña actual no es correcta.")
-            cuentas.cambiar_password(s["usuario"], datos.get("nueva") or "")
-            with _cerrojo:  # cierra las demás sesiones de este usuario
-                for t in [t for t, x in SESIONES.items() if x["usuario"] == s["usuario"] and t != s["token"]]:
-                    SESIONES.pop(t)
+            gen = cuentas.cambiar_password(s["usuario"], datos.get("nueva") or "")
+            s["gen"] = gen  # esta sesión sigue abierta; las demás de este usuario se cierran
+            cerrar_sesiones(s["usuario"], salvo=s["token"])
             nk.registrar("Contraseña cambiada", s["usuario"])
             return self._ok()
         if metodo == "POST" and ruta == "/api/cambiar-cuenta":
@@ -1215,19 +1229,25 @@ class Manejador(BaseHTTPRequestHandler):
         if m:
             usuario, accion = m.groups()
             if accion == "password":
-                cuentas.cambiar_password(usuario, datos.get("password") or "")
-                with _cerrojo:
-                    for t in [t for t, x in SESIONES.items() if x["usuario"] == usuario]:
-                        SESIONES.pop(t)
+                gen = cuentas.cambiar_password(usuario, datos.get("password") or "")
+                if usuario == s["usuario"]:
+                    s["gen"] = gen
+                cerrar_sesiones(usuario, salvo=s["token"])
                 nk.registrar("Contraseña restablecida", usuario)
             elif accion == "borrar":
                 if usuario == s["usuario"]:
                     raise RuntimeError("No puedes borrarte a ti mismo.")
                 cuentas.borrar_usuario(usuario)
+                cerrar_sesiones(usuario)
                 nk.registrar("Usuario del panel borrado", usuario)
             else:
-                cuentas.modificar_usuario(usuario, nombre=datos.get("nombre"), rol=datos.get("rol"),
-                                          cuenta=datos.get("cuenta"))
+                antes = cuentas.generacion_sesiones(cuentas.buscar_usuario(usuario))
+                gen = cuentas.modificar_usuario(usuario, nombre=datos.get("nombre"), rol=datos.get("rol"),
+                                                cuenta=datos.get("cuenta"))
+                if gen != antes:  # cambió el rol o la vivienda: fuera sus sesiones
+                    if usuario == s["usuario"]:
+                        s["gen"] = gen  # quien se edita a sí mismo sigue dentro, ya con su rol y vivienda nuevos
+                    cerrar_sesiones(usuario, salvo=s["token"])
                 nk.registrar("Usuario del panel modificado", usuario)
             return self._ok()
         return self._error(404, "No encontrado")
