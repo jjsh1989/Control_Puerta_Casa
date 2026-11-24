@@ -1124,6 +1124,15 @@ class Manejador(BaseHTTPRequestHandler):
             if datos.get("reenviar"):
                 n = copias.reenviar(datos["reenviar"])
                 return self._ok({"enviados": n, **copias.ajustes()})
+            if datos.get("comprobar"):
+                try:
+                    r = copias.comprobar(datos["comprobar"], datos.get("password_copia") or None)
+                except RuntimeError as e:
+                    nk.registrar("Copia comprobada", s.get("nombre") or s["usuario"], f"{datos['comprobar']}: {e}", ok=False)
+                    raise
+                nk.registrar("Copia comprobada", s.get("nombre") or s["usuario"],
+                             f"{datos['comprobar']}: se puede recuperar ({r['casas']} casas, {r['usuarios']} usuarios)")
+                return self._ok({"resumen": r, **copias.ajustes()})
             if datos.get("hacer"):
                 return self._ok({"texto": copias.hacer_copia(s.get("nombre") or s["usuario"]), **copias.ajustes()})
             return self._ok(copias.ajustes())

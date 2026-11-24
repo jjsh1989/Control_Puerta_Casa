@@ -1244,13 +1244,13 @@ function pintarTema() {
 const DIAS = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
 
 // Confirmaciones propias: las ventanas nativas del navegador no funcionan en todas partes
-function confirmar(texto, {titulo = "¿Seguro?", boton = "Aceptar", peligro = false, campo = null, valor = ""} = {}) {
+function confirmar(texto, {titulo = "¿Seguro?", boton = "Aceptar", peligro = false, campo = null, valor = "", tipo = "text"} = {}) {
   return new Promise(res => {
     const d = $("dlgConfirmar");
     $("cfTitulo").textContent = titulo; $("cfTexto").textContent = texto;
     $("cfSi").textContent = boton; $("cfSi").classList.toggle("peligro", peligro);
     $("cfCampoBloque").classList.toggle("oculto", campo === null);
-    $("cfCampo").value = valor; $("cfCampo").placeholder = campo || "";
+    $("cfCampo").type = tipo; $("cfCampo").value = valor; $("cfCampo").placeholder = campo || "";
     d.returnValue = "";
     d.onclose = () => res(d.returnValue === "si" ? (campo === null ? true : $("cfCampo").value) : (campo === null ? false : null));
     d.showModal();
@@ -2223,14 +2223,22 @@ function pintarCopias(c) {
   $("cp_dia").value = c.dia; $("cp_hora").value = c.hora; $("cp_activo").checked = c.activo; $("cp_guardar").value = c.guardar;
   $("cpLista").innerHTML = (c.lista || []).length ? c.lista.map(x => `<div class="fila-seccion"><span class="nom">💾 ${x.fecha ? esc(new Date(x.fecha).toLocaleString("es-ES", {dateStyle: "medium", timeStyle: "short"})) : esc(x.nombre)}</span>
       <span class="chip">${esc(x.tamano)}</span>
-      <div class="herramientas"><button type="button" title="Enviármela por Telegram" onclick="reenviarCopia('${esc(x.nombre)}', this)">${ico("telegram")}Enviar</button>
+      ${x.comprobacion ? (x.comprobacion.ok ? `<span class="chip on" title="Comprobada el ${esc(new Date(x.comprobacion.hora).toLocaleString("es-ES"))}">✅ Se puede recuperar</span>`
+                                            : `<span class="chip aviso" title="${esc(x.comprobacion.error || "")}">⚠️ No se puede recuperar</span>`) : '<span class="chip">Sin comprobar</span>'}
+      <div class="herramientas"><button type="button" title="Abrirla y validarla sin tocar nada" onclick="comprobarCopia('${esc(x.nombre)}', this)">🔍 Comprobar</button>
+        <button type="button" title="Enviármela por Telegram" onclick="reenviarCopia('${esc(x.nombre)}', this)">${ico("telegram")}Enviar</button>
         <button type="button" class="peligro" title="Borrar" onclick="borrarCopia('${esc(x.nombre)}', this)">Borrar</button></div></div>`).join("")
     : '<div class="muted peq">Todavía no hay copias en el servidor.</div>';
   $("cpBotonClave").textContent = c.clave ? "Cambiar contraseña" : "Poner contraseña";
   $("cpChip").textContent = !c.clave ? "Sin contraseña" : c.activo ? "Semanal" : "Desactivada";
   $("cpChip").className = "chip" + (c.clave && c.activo ? " on" : c.error ? " aviso" : "");
-  $("cpEstado").innerHTML = (c.ultima ? `Última copia: ${esc(new Date(c.ultima).toLocaleString("es-ES"))}${c.tamano ? " (" + esc(c.tamano) + ")" : ""}.` : "Todavía no hay ninguna copia.")
-    + (c.error ? `<br>⚠️ Falló el ${esc(new Date(c.error.hora).toLocaleString("es-ES"))}: ${esc(c.error.texto)}` : "");
+  const f = (iso) => esc(new Date(iso).toLocaleString("es-ES")), ult = (c.lista || [])[0], comp = ult && ult.comprobacion;
+  $("cpEstado").innerHTML = (c.ultima ? `💾 Última copia creada: ${f(c.ultima)}${c.tamano ? " (" + esc(c.tamano) + ")" : ""}.` : "Todavía no hay ninguna copia.")
+    + (ult ? (comp ? (comp.ok ? `<br>🔍 Comprobada el ${f(comp.hora)}: se puede recuperar.` : `<br>⚠️ Comprobada el ${f(comp.hora)}: NO se puede recuperar (${esc(comp.error || "")}).`)
+                   : "<br>🔍 La última copia aún no se ha comprobado.") : "")
+    + (c.envio ? (c.envio.enviados ? `<br>📤 Enviada fuera del servidor el ${f(c.envio.hora)} (${c.envio.enviados} Telegram)${c.envio.error ? "; con algún fallo: " + esc(c.envio.error) : ""}.`
+                                   : `<br>⚠️ No se pudo enviar fuera del servidor (${f(c.envio.hora)}): ${esc(c.envio.error || "")}. La copia del servidor sí está guardada.`) : "")
+    + (c.error ? `<br>⚠️ La copia falló el ${f(c.error.hora)}: ${esc(c.error.texto)}` : "");
 }
 async function cargarCopias() { pintarCopias((await api("POST", "/api/admin/copias", {})).resultado); }
 async function guardarCopias(b) {
@@ -2245,6 +2253,19 @@ async function guardarCopias(b) {
 async function borrarCopia(nombre, b) {
   if (!await confirmar("Se borrará esta copia del servidor. Si te llegó por Telegram, esa sigue allí.", {titulo: "Borrar copia", boton: "Borrar", peligro: true})) return;
   await conBoton(b, async () => { pintarCopias((await api("POST", "/api/admin/copias", {borrar: nombre})).resultado); aviso("Copia borrada"); });
+}
+async function comprobarCopia(nombre, b, password) {
+  try {
+    if (b) b.disabled = true;
+    const r = (await api("POST", "/api/admin/copias", {comprobar: nombre, password_copia: password || ""})).resultado;
+    pintarCopias(r); aviso(`✅ La copia se puede recuperar (${r.resumen.casas} casas, ${r.resumen.usuarios} usuarios)`);
+  } catch (e) {
+    if (/otra contraseña/.test(e.message) && !password) {
+      const p = await confirmar(e.message, {titulo: "Contraseña de esa copia", boton: "Comprobar", campo: "Contraseña de las copias", tipo: "password"});
+      if (p) return comprobarCopia(nombre, b, p);
+    } else aviso("⚠️ " + e.message);
+    cargarCopias();
+  } finally { if (b) b.disabled = false; }
 }
 async function reenviarCopia(nombre, b) {
   await conBoton(b, async () => { pintarCopias((await api("POST", "/api/admin/copias", {reenviar: nombre})).resultado); aviso("Enviada por Telegram"); });

@@ -150,6 +150,9 @@ cd /opt/puerta && docker compose run --rm -v ./secretos:/app/secretos -v ./copia
 docker compose up -d
 ```
 Te pedirá la contraseña de las copias y dejará `datos/` y la clave maestra en `secretos/` como estaban.
+Antes de cambiar nada comprueba la contraseña, que la copia esté completa y que se pueda escribir en las carpetas. Si algo falla, no toca la instalación. Lo que había antes queda en `datos/.antes-de-restaurar-…` y `secretos/.antes-de-restaurar-…`; bórralo cuando veas que todo funciona.
+
+En el panel, cada copia tiene el botón **🔍 Comprobar**, que la abre y la valida sin tocar nada. Cada copia nueva se comprueba sola. Arriba se ven por separado la fecha en que se hizo la última copia, la de su comprobación y si llegó por Telegram.
 
 ## 9. (Opcional) Un dominio propio
 

@@ -8,14 +8,21 @@ no sirve de nada; con ella se recupera todo en un servidor nuevo.
 Dónde va: se guardan las últimas (1 a 5, se elige; por defecto 4) en datos/copias/ y cada una se manda por Telegram a los
 administradores que reciben avisos (así queda fuera del servidor). Si una copia falla, avisa.
 
+Comprobar: tras cada copia (y con el botón «Comprobar») se descifra y se valida en memoria,
+sin tocar nada: que se pueda abrir, que estén la clave maestra, los usuarios y la configuración
+de cada casa, y que la bóveda se pueda leer con esa clave.
+
 Recuperar (en el servidor nuevo, con el panel parado y desde la carpeta del panel):
     python3 copias.py restaurar ruta/al/archivo.lslab
+Antes de cambiar nada comprueba la contraseña, la copia y los permisos; prepara todo aparte y
+solo entonces lo sustituye. Si algo falla a mitad, deja la instalación como estaba.
 """
 import base64
 import io
 import json
 import os
 import secrets
+import shutil
 import sys
 import tarfile
 import time
@@ -47,6 +54,8 @@ def ajustes():
     return {"activo": bool(a.get("activo")), "dia": int(a.get("dia", 6)), "hora": a.get("hora") or "03:30",
             "guardar": int(a.get("guardar") or GUARDAR),
             "ultima": a.get("ultima"), "error": a.get("error"), "tamano": a.get("tamano"),
+            # por separado: se creó (ultima), se pudo abrir y validar (comprobada), llegó fuera (envio)
+            "comprobada": a.get("comprobada"), "envio": a.get("envio"),
             "clave": bool(cuentas.boveda_leer(CLAVE_BOVEDA, cuentas.CUENTA_SISTEMA)),
             "lista": listar()}
 
@@ -55,13 +64,16 @@ def listar():
     """Copias guardadas en el servidor, de la más nueva a la más vieja."""
     if not CARPETA_COPIAS.exists():
         return []
+    import cuentas
+    comprobaciones = (cuentas.leer_sistema().get("copias") or {}).get("comprobaciones") or {}
     salida = []
     for p in sorted(CARPETA_COPIAS.glob("copia-panel-*.lslab"), reverse=True):
         try:
             fecha = datetime.strptime(p.stem[len("copia-panel-"):], "%Y%m%d-%H%M").astimezone().isoformat()
         except ValueError:
             fecha = None
-        salida.append({"nombre": p.name, "fecha": fecha, "tamano": f"{p.stat().st_size / 1024:.0f} KB"})
+        salida.append({"nombre": p.name, "fecha": fecha, "tamano": f"{p.stat().st_size / 1024:.0f} KB",
+                       "comprobacion": comprobaciones.get(p.name)})
     return salida
 
 
@@ -78,10 +90,16 @@ def borrar(nombre):
 
 def reenviar(nombre):
     p = _ruta(nombre)
-    n = _mandar_por_telegram(p.name, p.read_bytes())
+    n, error = _mandar_por_telegram(p.name, p.read_bytes())
+    _apuntar_envio(n, error)
     if not n:
-        raise RuntimeError("No se pudo enviar: ningún administrador tiene su Telegram vinculado para los avisos.")
+        raise RuntimeError(f"No se pudo enviar: {error}")
     return n
+
+
+def _apuntar_envio(enviados, error):
+    _guardar_ajustes(envio={"hora": datetime.now().astimezone().isoformat(timespec="seconds"),
+                            "enviados": enviados, "error": error})
 
 
 def _recortar():
@@ -89,6 +107,11 @@ def _recortar():
     guardar = ajustes()["guardar"]
     for viejo in sorted(CARPETA_COPIAS.glob("copia-panel-*.lslab"))[:-guardar] if CARPETA_COPIAS.exists() else []:
         viejo.unlink()
+    import cuentas
+    a = cuentas.leer_sistema().get("copias") or {}
+    if a.get("comprobaciones"):  # olvidar las comprobaciones de copias que ya no están
+        quedan = {p.name for p in CARPETA_COPIAS.glob("copia-panel-*.lslab")}
+        _guardar_ajustes(comprobaciones={k: v for k, v in a["comprobaciones"].items() if k in quedan})
 
 
 def _guardar_ajustes(**cambios):
@@ -138,7 +161,7 @@ def _empaquetar():
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for p in sorted(DATOS.iterdir()):
-            if p.name in EXCLUIR or p.name.endswith(".tmp"):
+            if p.name in EXCLUIR or p.name.endswith(".tmp") or p.name.startswith("."):  # p. ej. .antes-de-restaurar-…
                 continue
             tar.add(p, arcname=f"datos/{p.name}")
         clave = cuentas._clave_maestra()
@@ -162,14 +185,28 @@ def hacer_copia(quien="automático"):
     contenido = CABECERA + g["sal"].encode() + b"\n" + cifrado
     nombre = f"copia-panel-{datetime.now():%Y%m%d-%H%M}.lslab"
     CARPETA_COPIAS.mkdir(parents=True, exist_ok=True)
-    (CARPETA_COPIAS / nombre).write_bytes(contenido)
-    os.chmod(CARPETA_COPIAS / nombre, 0o600)
-    _recortar()
-    enviados = _mandar_por_telegram(nombre, contenido)
+    ruta = CARPETA_COPIAS / nombre
+    tmp = CARPETA_COPIAS / f".{nombre}.tmp"
+    try:  # se escribe aparte (privado desde el principio) y solo al final recibe su nombre
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(contenido)
+        tmp.replace(ruta)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
     tam = f"{len(contenido) / 1024:.0f} KB"
     _guardar_ajustes(ultima=datetime.now().astimezone().isoformat(timespec="seconds"), error=None, tamano=tam)
-    texto = f"{nombre} ({tam}) · guardada en el servidor" + (f" y enviada a {enviados} Telegram" if enviados else
-                                                            " (no se pudo enviar por Telegram: nadie administrador vinculado)")
+    try:
+        comprobar(nombre)
+        comprobada = "comprobada"
+    except Exception as e:
+        comprobada = f"⚠️ NO se ha podido comprobar: {e}"
+    _recortar()
+    enviados, error_envio = _mandar_por_telegram(nombre, contenido)
+    _apuntar_envio(enviados, error_envio)
+    texto = (f"{nombre} ({tam}) · guardada en el servidor, {comprobada}"
+             + (f" y enviada a {enviados} Telegram" if enviados else f" · ⚠️ no se pudo enviar por Telegram: {error_envio}"))
     with cuentas.en_cuenta(cuentas.CUENTA_PRINCIPAL, quien):
         nk.registrar("Copia de seguridad", quien, texto)
     return texto
@@ -195,18 +232,22 @@ def chats_admin():
 
 
 def _mandar_por_telegram(nombre, contenido):
+    """Devuelve (cuántos la recibieron, motivo si alguno falló o no había a quién mandarla)."""
     import telegram
-    n = 0
-    for chat in chats_admin():
+    n, errores = 0, []
+    chats = chats_admin()
+    if not chats:
+        return 0, "ningún administrador tiene su Telegram vinculado para los avisos"
+    for chat in chats:
         try:
             telegram._api("sendDocument", {"chat_id": chat, "disable_notification": True,
                                            "caption": "💾 Copia de seguridad del panel (cifrada). Guárdala: "
                                                       "sirve para recuperar todo con tu contraseña de copias."},
                           ("document", nombre, contenido, "application/octet-stream"), timeout=120)
             n += 1
-        except Exception:
-            pass
-    return n
+        except Exception as e:
+            errores.append(str(e)[:200])
+    return n, "; ".join(errores) or None
 
 
 def avisar_admins(texto):
@@ -246,26 +287,172 @@ def revisar():
         avisar_admins(f"⚠️ No se pudo hacer la copia de seguridad del panel: {e}\nLo vuelvo a intentar en 6 horas.")
 
 
-# ---------------------------------------------------------------- recuperar
+# ---------------------------------------------------------------- comprobar
 
-def restaurar(ruta, password, destino=CARPETA):
+def _descifrar(contenido, password=None, clave=None):
+    """Devuelve el .tar.gz de dentro. Con `password` (recuperar) o con la clave guardada en la bóveda."""
     from cryptography.fernet import Fernet, InvalidToken
-    contenido = Path(ruta).read_bytes()
     if not contenido.startswith(CABECERA):
         raise RuntimeError("Ese archivo no es una copia del panel.")
-    resto = contenido[len(CABECERA):]
-    sal, _, cifrado = resto.partition(b"\n")
+    sal, _, cifrado = contenido[len(CABECERA):].partition(b"\n")
     try:
-        datos = Fernet(_derivar(password, bytes.fromhex(sal.decode()))).decrypt(cifrado)
+        sal_b = bytes.fromhex(sal.decode())
+    except ValueError:
+        raise RuntimeError("La copia está dañada (cabecera ilegible).") from None
+    if password is not None:
+        clave = _derivar(password, sal_b)
+    elif clave is None:
+        import cuentas
+        g = json.loads(cuentas.boveda_leer(CLAVE_BOVEDA, cuentas.CUENTA_SISTEMA) or "{}")
+        if not g:
+            raise RuntimeError("Falta la contraseña de las copias.")
+        if g["sal"] != sal.decode():
+            raise RuntimeError("Esta copia se hizo con otra contraseña de copias: escríbela para comprobarla.")
+        clave = g["clave"].encode()
+    try:
+        return Fernet(clave).decrypt(cifrado)
     except InvalidToken:
-        raise RuntimeError("Contraseña incorrecta (o archivo dañado).") from None
-    destino = Path(destino)
-    with tarfile.open(fileobj=io.BytesIO(datos), mode="r:gz") as tar:
-        for m in tar.getmembers():
-            if m.name.startswith("/") or ".." in Path(m.name).parts or not m.name.split("/")[0] in ("datos", "secretos"):
+        raise RuntimeError("Contraseña incorrecta o copia dañada: no se puede descifrar.") from None
+
+
+def validar(tar_gz):
+    """Comprueba que lo descifrado es una copia completa y coherente. Devuelve un resumen."""
+    from cryptography.fernet import Fernet, InvalidToken
+    try:
+        tar = tarfile.open(fileobj=io.BytesIO(tar_gz), mode="r:gz")
+        miembros = tar.getmembers()
+    except (tarfile.TarError, EOFError, OSError):
+        raise RuntimeError("La copia está dañada: no se puede abrir su contenido.") from None
+    with tar:
+        archivos = {}
+        for m in miembros:
+            if m.name.startswith("/") or ".." in Path(m.name).parts or m.name.split("/")[0] not in ("datos", "secretos"):
                 raise RuntimeError(f"Archivo sospechoso dentro de la copia: {m.name}")
-        tar.extractall(destino, filter="data") if sys.version_info >= (3, 12) else tar.extractall(destino)
-    return destino
+            if not (m.isfile() or m.isdir()):
+                raise RuntimeError(f"Tipo de archivo no admitido dentro de la copia: {m.name}")
+            if m.isfile():
+                archivos[m.name] = tar.extractfile(m).read()
+    clave = (archivos.get("secretos/clave_maestra") or b"").strip()
+    if not clave:
+        raise RuntimeError("A la copia le falta la clave maestra: no serviría para recuperar los secretos.")
+    if "datos/usuarios.json" not in archivos:
+        raise RuntimeError("A la copia le faltan los usuarios del panel.")
+    for nombre, contenido in archivos.items():
+        if nombre.endswith(".json"):
+            try:
+                json.loads(contenido.decode() or "null")
+            except ValueError:
+                raise RuntimeError(f"La copia tiene un archivo estropeado: {nombre}") from None
+    if "datos/boveda.cifrada" in archivos:
+        try:
+            Fernet(clave).decrypt(archivos["datos/boveda.cifrada"])
+        except (InvalidToken, ValueError):
+            raise RuntimeError("La bóveda de la copia no se puede abrir con su clave maestra.") from None
+    casas = {n.split("/")[2] for n in archivos if n.startswith("datos/cuentas/") and n.count("/") >= 3}
+    usuarios = json.loads(archivos["datos/usuarios.json"]).get("usuarios", [])
+    return {"archivos": len(archivos), "casas": len(casas), "usuarios": len(usuarios)}
+
+
+def comprobar(nombre, password=None):
+    """Descifra y valida una copia guardada (sin tocar nada) y apunta el resultado."""
+    import cuentas
+    p = _ruta(nombre)
+    ahora = datetime.now().astimezone().isoformat(timespec="seconds")
+    a = cuentas.leer_sistema().get("copias") or {}
+    lista = dict(a.get("comprobaciones") or {})
+    try:
+        resumen = validar(_descifrar(p.read_bytes(), password))
+    except Exception as e:
+        lista[p.name] = {"hora": ahora, "ok": False, "error": str(e)}
+        _guardar_ajustes(comprobaciones=lista)
+        raise
+    lista[p.name] = {"hora": ahora, "ok": True, **resumen}
+    cambios = {"comprobaciones": lista}
+    if listar() and listar()[0]["nombre"] == p.name:
+        cambios["comprobada"] = {"hora": ahora, "nombre": p.name}
+    _guardar_ajustes(**cambios)
+    return resumen
+
+
+# ---------------------------------------------------------------- recuperar
+
+def _probar_escritura(carpeta):
+    try:
+        carpeta.mkdir(parents=True, exist_ok=True)
+        prueba = carpeta / f".prueba-escritura-{secrets.token_hex(4)}"
+        prueba.write_bytes(b"")
+        prueba.unlink()
+    except OSError as e:
+        raise RuntimeError(f"No se puede escribir en {carpeta} ({e.strerror}). No se ha cambiado nada.") from None
+
+
+def restaurar(ruta, password, destino=CARPETA):
+    """Recupera una copia en `destino` (datos/ y secretos/) sin dejar nada a medias:
+    1) descifra y valida, 2) comprueba permisos, 3) lo prepara aparte en cada carpeta,
+    4) aparta lo que había y pone lo nuevo. Si algo falla, devuelve lo que había a su sitio.
+    Lo anterior queda en «.antes-de-restaurar-…» dentro de cada carpeta, por si hay que volver.
+    Las fotos, clips y copias del servidor (no van en la copia) se quedan donde están."""
+    tar_gz = _descifrar(Path(ruta).read_bytes(), password)
+    resumen = validar(tar_gz)
+    destino = Path(destino)
+    marca = datetime.now().strftime("%Y%m%d-%H%M%S")
+    carpetas = {raiz: destino / raiz for raiz in ("datos", "secretos")}
+    for c in carpetas.values():
+        _probar_escritura(c)
+
+    # 3) preparar aparte, dentro de cada carpeta (mismo disco: luego basta con renombrar)
+    preparadas = {raiz: c / f".restaurando-{marca}" for raiz, c in carpetas.items()}
+    try:
+        with tarfile.open(fileobj=io.BytesIO(tar_gz), mode="r:gz") as tar:
+            for m in tar.getmembers():
+                raiz, _, resto = m.name.partition("/")
+                if not resto:
+                    continue
+                m.name = resto
+                if sys.version_info >= (3, 12):
+                    tar.extract(m, preparadas[raiz], filter="data")
+                else:
+                    tar.extract(m, preparadas[raiz])
+        clave = preparadas["secretos"] / "clave_maestra"
+        if clave.exists():
+            clave.chmod(0o400)
+    except Exception as e:
+        for p in preparadas.values():
+            shutil.rmtree(p, ignore_errors=True)
+        raise RuntimeError(f"No se pudo preparar la copia ({e}). No se ha cambiado nada.") from None
+
+    # 4) sustituir, apuntando cada paso para poder deshacerlo
+    hechos = []  # (de, a) ya movidos
+    apartados = {raiz: c / f".antes-de-restaurar-{marca}" for raiz, c in carpetas.items()}
+    try:
+        for raiz, c in carpetas.items():
+            apartados[raiz].mkdir()
+            for e in sorted(c.iterdir()):
+                if e.name.startswith((".restaurando-", ".antes-de-restaurar-")) or (raiz == "datos" and e.name in EXCLUIR):
+                    continue
+                e.rename(apartados[raiz] / e.name)
+                hechos.append((e, apartados[raiz] / e.name))
+            for e in sorted(preparadas[raiz].iterdir()):
+                if raiz == "datos" and e.name in EXCLUIR:
+                    continue
+                e.rename(c / e.name)
+                hechos.append((e, c / e.name))
+    except Exception as e:
+        for origen, actual in reversed(hechos):  # deshacer en orden inverso
+            try:
+                actual.rename(origen)
+            except OSError:
+                pass
+        for raiz in carpetas:
+            shutil.rmtree(preparadas[raiz], ignore_errors=True)
+            try:
+                apartados[raiz].rmdir()  # solo si quedó vacía
+            except OSError:
+                pass
+        raise RuntimeError(f"Falló al sustituir los datos ({e}). Se ha dejado todo como estaba.") from None
+    for p in preparadas.values():
+        shutil.rmtree(p, ignore_errors=True)
+    return {"destino": str(destino), "anterior": [str(p) for p in apartados.values()], **resumen}
 
 
 if __name__ == "__main__":
@@ -273,5 +460,13 @@ if __name__ == "__main__":
         print("Uso: python3 copias.py restaurar ruta/al/archivo.lslab")
         sys.exit(1)
     import getpass
-    destino = restaurar(sys.argv[2], getpass.getpass("Contraseña de las copias: "))
-    print(f"✅ Copia recuperada en {destino}/datos y {destino}/secretos. Arranca el panel: docker compose up -d")
+    try:
+        r = restaurar(sys.argv[2], getpass.getpass("Contraseña de las copias: "))
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+    print(f"✅ Copia recuperada ({r['casas']} casas, {r['usuarios']} usuarios). Arranca el panel: docker compose up -d")
+    print("Lo que había antes está en estas carpetas, por si hiciera falta volver atrás:")
+    for p in r["anterior"]:
+        print("   ", p)
+    print("Cuando compruebes que todo funciona, puedes borrarlas.")
