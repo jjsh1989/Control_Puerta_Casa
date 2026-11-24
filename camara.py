@@ -561,6 +561,8 @@ class Cliente(threading.Thread):
         self.foto_nueva = threading.Condition()
         self.oyentes = {}               # serial -> set de funciones que reciben (bytes, metadata) del directo
         self.cerrojo_directo = threading.Lock()
+        self.conversiones = {}          # (serial, ancho, fps) -> Conversion compartida del directo
+        self.cerrojo_conversiones = threading.Lock()
         self.orden_directo = {}         # serial -> Lock: nunca dos órdenes de directo a la vez a la misma cámara
         self.emitiendo = set()          # seriales con el directo pedido por el panel y en marcha
         self.bloqueo_clip = {}
@@ -844,67 +846,33 @@ class Cliente(threading.Thread):
 
     def directo_mjpeg(self, sn, segundos_max=300, ancho=960, fps=8):
         """Generador de imágenes JPEG del directo (para mostrarlo en el navegador como MJPEG).
-        Termina al cerrarse el generador (el navegador se va) o a los segundos_max."""
-        import queue
-        cola = queue.Queue(maxsize=200)
-
-        def recibir(trozo, meta):
-            try:
-                cola.put_nowait((trozo, meta))
-            except queue.Full:
-                pass  # si va con retraso, se descartan trozos
-        self.unirse(sn, recibir)
-        proceso = None
+        Todas las pantallas que ven la misma cámara con la misma calidad comparten una sola conversión
+        de ffmpeg; se para al irse la última. Termina al cerrarse el generador (el navegador se va),
+        si la conversión se corta o a los segundos_max."""
+        clave = (sn, ancho, fps)
+        with self.cerrojo_conversiones:
+            conv = self.conversiones.get(clave)
+            if conv is None or conv.terminada:
+                conv = Conversion(self, sn, ancho, fps)
+                self.conversiones[clave] = conv
+                conv.arrancar()
+            conv.espectadores += 1
         try:
-            trozo, meta = cola.get(timeout=30)
-            if trozo is None:
-                return
-            codec = str(meta.get("videoCodec", "H264")).upper()
-            formato = "hevc" if codec in ("H265", "HEVC", "1") else "h264"
-            proceso = subprocess.Popen(
-                ["ffmpeg", "-loglevel", "error", "-fflags", "nobuffer", "-flags", "low_delay", "-threads", "1",
-                 "-f", formato, "-i", "pipe:0", "-vf", f"fps={fps},scale={ancho}:-2", "-q:v", "7",
-                 "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-
-            def alimentar(primero):
-                try:
-                    proceso.stdin.write(primero)
-                    while True:
-                        t, _ = cola.get(timeout=20)
-                        if t is None:
-                            break
-                        proceso.stdin.write(t)
-                except Exception:
-                    pass
-                finally:
-                    try:
-                        proceso.stdin.close()
-                    except Exception:
-                        pass
-            threading.Thread(target=alimentar, args=(trozo,), daemon=True).start()
-            fin, buf = time.time() + segundos_max, b""
+            visto, fin, espera = 0, time.time() + segundos_max, 35  # la primera imagen puede tardar
             while time.time() < fin:
-                datos = proceso.stdout.read1(65536) if hasattr(proceso.stdout, "read1") else proceso.stdout.read(4096)
-                if not datos:
-                    break
-                buf += datos
-                while True:
-                    a = buf.find(b"\xff\xd8")
-                    b = buf.find(b"\xff\xd9", a + 2) if a >= 0 else -1
-                    if b < 0:
-                        break
-                    yield buf[a:b + 2]
-                    buf = buf[b + 2:]
+                jpg, visto = conv.siguiente(visto, espera)
+                if jpg is None:
+                    return
+                espera = 20
+                yield jpg
         finally:
-            self.salir(sn, recibir)
-            try:
-                cola.put_nowait((None, {}))
-            except Exception:
-                pass
-            if proceso:
-                proceso.kill()
-                proceso.wait(timeout=5)
+            with self.cerrojo_conversiones:
+                conv.espectadores -= 1
+                ultimo = conv.espectadores <= 0
+                if ultimo and self.conversiones.get(clave) is conv:
+                    self.conversiones.pop(clave)
+            if ultimo:
+                conv.parar()
 
     # ---------- evento de la cámara
     def _procesar_evento(self, sn, que):
@@ -947,6 +915,125 @@ class Cliente(threading.Thread):
             self.visitas[sn] = visita
             enviar_con_camara(cfg, "movimiento", f"{que} · {nombre_cam}", momento, ident_existente=ident,
                               foto=foto, sn=sn, con_clip=regla.get("clip", True), visita=visita)
+
+
+class Conversion:
+    """Una conversión del directo a JPEG con ffmpeg, compartida por todas las pantallas que ven la misma
+    cámara con la misma calidad. Solo se guarda la imagen más reciente: una pantalla lenta se salta
+    imágenes en vez de acumular retraso, y no frena a las demás."""
+
+    def __init__(self, cliente, sn, ancho, fps):
+        import queue
+        self.cliente, self.sn, self.ancho, self.fps = cliente, sn, ancho, fps
+        self.cola = queue.Queue(maxsize=200)   # trozos de vídeo de la cámara hacia ffmpeg
+        self.aviso = threading.Condition()
+        self.imagen, self.numero = None, 0     # última imagen y su número (crece con cada una)
+        self.terminada = False
+        self.espectadores = 0
+        self.proceso = None
+
+    def _recibir(self, trozo, meta):
+        try:
+            self.cola.put_nowait((trozo, meta))
+        except Exception:
+            pass  # si ffmpeg va con retraso, se descartan trozos
+
+    def arrancar(self):
+        threading.Thread(target=self._trabajar, daemon=True, name=f"directo-{self.sn}").start()
+
+    def siguiente(self, visto, espera):
+        """Espera una imagen más nueva que la número «visto». Devuelve (jpg, número) o (None, visto)."""
+        with self.aviso:
+            self.aviso.wait_for(lambda: self.numero > visto or self.terminada, timeout=espera)
+            if self.numero > visto:
+                return self.imagen, self.numero
+            return None, visto
+
+    def _publicar(self, jpg):
+        with self.aviso:
+            self.imagen, self.numero = jpg, self.numero + 1
+            self.aviso.notify_all()
+
+    def _terminar(self):
+        with self.aviso:
+            self.terminada = True
+            self.aviso.notify_all()
+
+    def _trabajar(self):
+        unido = False
+        try:
+            self.cliente.unirse(self.sn, self._recibir)
+            unido = True
+            trozo, meta = self.cola.get(timeout=30)
+            if trozo is None or self.terminada:
+                return
+            codec = str(meta.get("videoCodec", "H264")).upper()
+            formato = "hevc" if codec in ("H265", "HEVC", "1") else "h264"
+            self.proceso = subprocess.Popen(
+                ["ffmpeg", "-loglevel", "error", "-fflags", "nobuffer", "-flags", "low_delay", "-threads", "1",
+                 "-f", formato, "-i", "pipe:0", "-vf", f"fps={self.fps},scale={self.ancho}:-2", "-q:v", "7",
+                 "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            if self.terminada:  # se fueron todos mientras arrancaba
+                return
+            threading.Thread(target=self._alimentar, args=(trozo,), daemon=True).start()
+            salida, buf = self.proceso.stdout, b""
+            while not self.terminada:
+                datos = salida.read1(65536) if hasattr(salida, "read1") else salida.read(4096)
+                if not datos:
+                    break
+                buf += datos
+                while True:
+                    a = buf.find(b"\xff\xd8")
+                    b = buf.find(b"\xff\xd9", a + 2) if a >= 0 else -1
+                    if b < 0:
+                        if a > 0:
+                            buf = buf[a:]
+                        break
+                    self._publicar(buf[a:b + 2])
+                    buf = buf[b + 2:]
+        except Exception as e:
+            if not self.terminada:
+                nk.log(f"Eufy: el directo se ha cortado ({e})")
+        finally:
+            self._terminar()
+            if unido:
+                self.cliente.salir(self.sn, self._recibir)
+            self._cerrar_proceso()
+
+    def _alimentar(self, primero):
+        try:
+            self.proceso.stdin.write(primero)
+            while not self.terminada:
+                t, _ = self.cola.get(timeout=20)
+                if t is None:
+                    break
+                self.proceso.stdin.write(t)
+        except Exception:
+            pass
+        finally:
+            try:
+                self.proceso.stdin.close()
+            except Exception:
+                pass
+
+    def _cerrar_proceso(self):
+        p = self.proceso
+        if p and p.poll() is None:
+            p.kill()
+            try:
+                p.wait(timeout=5)
+            except Exception:
+                pass
+
+    def parar(self):
+        """Se ha ido la última pantalla: se corta todo."""
+        self._terminar()
+        try:
+            self.cola.put_nowait((None, {}))
+        except Exception:
+            pass
+        self._cerrar_proceso()
 
 
 CLIENTE = Cliente()
