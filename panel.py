@@ -144,13 +144,17 @@ def estado_usuarios(cfg):
 
     ahora = datetime.now().astimezone()
     nombres_programa, filas = set(), []
+    pendientes = local.get(nk.CLAVE_RENOVACIONES, {})
     for d in cfg["destinatarios"]:
         nombre_auth = nk.nombre_auth_de(cfg, d)
         nombres_programa.add(nombre_auth)
         info = local.get(d["id"], {})
+        rec = pendientes.get(d["id"])
         caduca, en_cerradura = info.get("caduca"), None
         if auths is not None:
             match = [a for a in auths if a.get("name") == nombre_auth]
+            if rec and rec.get("anteriores"):  # mientras no se entrega el nuevo, vale el anterior
+                match = [a for a in match if a.get("id") in rec["anteriores"]] or match
             en_cerradura = bool(match)
             caduca = match[0].get("allowedUntilDate") if match else None
         activo = False
@@ -171,6 +175,8 @@ def estado_usuarios(cfg):
             "activo": activo, "caduca": caduca if activo else None,
             "invitados": [{k: i[k] for k in ("nombre_auth", "hasta", "motivo")}
                           for i in nk.invitados_activos(d["id"])],
+            # renovación sin entregar (sin el código: se ve al reenviarla)
+            "renovacion": {k: rec.get(k) for k in ("estado", "intentos", "error", "ultimo_intento", "hasta")} if rec else None,
         })
     if auths is not None:
         otros = [{"id": a.get("id"), "nombre": a.get("name"), "hasta": a.get("allowedUntilDate")}
@@ -321,10 +327,12 @@ class Programador(threading.Thread):
     Si el servidor estuvo apagado a la hora prevista, la hace en cuanto vuelve."""
 
     BATERIA_CADA = 30 * 60  # segundos entre lecturas de batería
+    REINTENTO_CADA = 30 * 60  # segundos entre reintentos de renovaciones que no llegaron
 
     def __init__(self):
         super().__init__(daemon=True)
         self._bateria = {}  # cuenta -> última revisión
+        self._reintento = {}  # cuenta -> último reintento de renovaciones fallidas
 
     def run(self):
         time.sleep(20)
@@ -354,6 +362,19 @@ class Programador(threading.Thread):
                                 bateria.revisar(cfg)
                     except Exception as e:
                         nk.log(f"Batería ({c['id']}): {e}")
+                if time.time() - self._reintento.get(c["id"], 0) >= self.REINTENTO_CADA:
+                    self._reintento[c["id"]] = time.time()
+                    try:
+                        with cuentas.en_cuenta(c["id"], "automático"):
+                            cuentas._ctx.origen = "semanal"
+                            try:
+                                cfg = nk.cargar_config()
+                                if cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id"):
+                                    nk.reintentar_fallidas(cfg)
+                            finally:
+                                cuentas._ctx.origen = None
+                    except Exception as e:
+                        nk.log(f"Reintento de renovaciones ({c['id']}): {e}")
             time.sleep(60)
 
     @staticmethod
@@ -973,6 +994,13 @@ class Manejador(BaseHTTPRequestHandler):
                 cuentas.boveda_borrar(f"callmebot:{d['id']}")
                 nk.registrar("Persona eliminada", d["nombre"], "")
             return self._ok({"borrados": borrados})
+
+        m = re.fullmatch(r"/api/renovacion/([\w-]+)/(reintentar|confirmar)", ruta)
+        if m:
+            d = destinatario(m.group(1))
+            if m.group(2) == "reintentar":
+                return self._ok(nk.reintentar_renovacion(cfg, nuki, d))
+            return self._ok(nk.confirmar_renovacion(cfg, nuki, d))
 
         m = re.fullmatch(r"/api/anular-invitado/(.+)", ruta)
         if m:

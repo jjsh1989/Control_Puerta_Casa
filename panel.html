@@ -1507,8 +1507,17 @@ function tarjetaPersona(u) {
   {
     const tipo = u.fijo ? '<span class="chip aviso">Fijo</span>' : (u.automatico ? '<span class="chip">Semanal</span>' : '<span class="chip">Temporal</span>');
     const estado = (u.activo ? '<span class="chip on">Activo</span>' : '<span class="chip mal">Sin código</span>')
+      + (u.renovacion ? `<span class="chip aviso">${u.renovacion.estado === "por_confirmar" ? "Nuevo sin enviar" : "Envío pendiente"}</span>` : "")
       + (u.canal_envio !== "whatsapp" && !u.telegram ? '<span class="chip aviso">Telegram sin conectar</span>' : "");
     const vence = u.activo ? (u.fijo ? "No caduca" : "Caduca " + fecha(u.caduca)) : "";
+    const rn = u.renovacion;
+    const renov = !rn ? "" : rn.estado === "por_confirmar"
+      ? `<div class="aviso peq" style="margin-top:8px">📨 Código nuevo preparado y sin confirmar. Hasta que confirmes que lo has enviado sigue valiendo el anterior.
+          <div class="acciones" style="margin-top:6px"><button onclick="reintentarRenovacion('${u.id}', this)">${ico("whatsapp")}Enviar código nuevo</button>
+          <button onclick="confirmarRenovacion('${u.id}', this)">✅ Ya lo he enviado</button></div></div>`
+      : `<div class="aviso peq" style="margin-top:8px">⚠️ No se ha podido enviar el código nuevo${rn.intentos ? ` (${rn.intentos} ${rn.intentos === 1 ? "intento" : "intentos"})` : ""}. Sigue valiendo el anterior.
+          ${rn.error ? `<div class="muted">${esc(rn.error)}</div>` : ""}
+          <div class="acciones" style="margin-top:6px"><button onclick="reintentarRenovacion('${u.id}', this)">${ico("renovar")}Reintentar</button></div></div>`;
     return `<div class="persona" id="p-${esc(u.id)}">
       <div class="persona-cab">
         <div class="avatar" style="background:${color(u.nombre)}">${esc(iniciales(u.nombre))}</div>
@@ -1523,6 +1532,7 @@ function tarjetaPersona(u) {
           <span style="font-family:ui-monospace,Menlo,monospace; font-weight:600" data-inv="${esc(i.nombre_auth)}">••••••</span>
           <span class="muted">hasta ${esc(fecha(i.hasta))}${i.motivo ? " · " + esc(i.motivo) : ""}</span>
           <button class="fantasma icono-btn peligro" title="Anular" onclick="anularInvitado('${esc(i.nombre_auth)}', this)">${ico("bloquear")}</button></div>`).join("")}</div>` : ""}
+      ${renov}
       <div class="acciones">
         <button class="principal" onclick="renovar('${u.id}', this)">${ico("renovar")}${u.activo ? "Renovar" : "Crear código"}</button>
         <button onclick="abrirInvitado('${u.id}')">${ico("invitado")}Invitado</button>
@@ -1555,21 +1565,38 @@ function pintarOtros(otros) {
 }
 const nombreDe = (id) => (USUARIOS.find(u => u.id === id) || {}).nombre || id;
 
-function mostrarResultado(titulo, r) {
+function mostrarResultado(titulo, r, id) {
   $("resTitulo").textContent = titulo;
   $("resCuerpo").innerHTML = (simulando() ? '<div class="aviso">Modo prueba: no se ha cambiado nada ni se ha enviado nada.</div>' : "") +
     (r.codigo ? `<div class="codigo-grande">${esc(r.codigo)}</div><div class="muted">${r.hasta ? "Válido hasta " + esc(fecha(r.hasta)) : "Código fijo: no caduca"}</div>` : "") +
     (r.mensaje ? `<p class="muted peq">«${esc(r.mensaje)}»</p>` : "") +
-    (r.enlace ? `<p><a class="boton principal" href="${esc(r.enlace)}" target="_blank" rel="noopener">${ico("whatsapp")}Abrir WhatsApp para enviarlo</a></p>`
-              : (r.codigo && !simulando() ? '<p>✅ WhatsApp enviado.</p>' : ""));
+    (r.enlace ? `<p><a class="boton principal" href="${esc(r.enlace)}" target="_blank" rel="noopener">${ico("whatsapp")}Abrir WhatsApp para enviarlo</a></p>` : "") +
+    (r.estado === "por_confirmar" && id
+      ? `<p class="muted peq">El código anterior sigue funcionando hasta que confirmes que has enviado este.</p>
+         <p><button type="button" onclick="confirmarRenovacion('${esc(id)}', this)">✅ Ya lo he enviado</button></p>`
+      : (r.codigo && !r.enlace && !simulando() ? '<p>✅ Enviado.</p>' : ""));
   $("dlgResultado").showModal();
+}
+async function confirmarRenovacion(id, b) {
+  await conBoton(b, async () => {
+    await api("POST", `/api/renovacion/${id}/confirmar`, {});
+    aviso(`Renovación de ${nombreDe(id)} confirmada: el código anterior se ha retirado`);
+    if ($("dlgResultado").open && b.closest("#dlgResultado")) b.closest("p").innerHTML = "✅ Confirmado.";
+    cargarEstado();
+  });
+}
+async function reintentarRenovacion(id, b) {
+  await conBoton(b, async () => {
+    const r = (await api("POST", `/api/renovacion/${id}/reintentar`, {})).resultado;
+    mostrarResultado(`Código para ${nombreDe(id)}`, r, id); cargarEstado();
+  });
 }
 async function renovar(id, b) {
   const u = USUARIOS.find(x => x.id === id) || {};
   let codigo = "";
   if (u.fijo) { codigo = await confirmar("6 cifras del 1 al 9, sin empezar por 12 y que no se haya usado antes. Déjalo vacío para uno al azar.",
     {titulo: `Código fijo para ${u.nombre}`, boton: "Crear", campo: "Vacío = al azar"}); if (codigo === null) return; }
-  conBoton(b, async () => mostrarResultado(`Código para ${nombreDe(id)}`, (await api("POST", `/api/renovar/${id}`, {simular: simulando(), codigo})).resultado));
+  conBoton(b, async () => { mostrarResultado(`Código para ${nombreDe(id)}`, (await api("POST", `/api/renovar/${id}`, {simular: simulando(), codigo})).resultado, id); cargarEstado(); });
 }
 function probar(id, b) {
   conBoton(b, async () => { const r = (await api("POST", `/api/probar/${id}`, {simular: simulando()})).resultado;
@@ -1588,13 +1615,18 @@ async function borrarOtro(authId, nombre, b) {
   conBoton(b, async () => { await api("POST", `/api/borrar-auth/${authId}`, {simular: simulando(), nombre}); aviso("Código borrado"); cargarEstado(); });
 }
 async function rotarTodos(b) {
-  if (!await confirmar("Los códigos actuales dejarán de funcionar y se enviarán los nuevos.", {titulo: "¿Renovar ya los códigos semanales?", boton: "Renovar"})) return;
+  if (!await confirmar("Se enviarán los códigos nuevos. Cada código actual deja de funcionar cuando consta que el nuevo ha llegado.", {titulo: "¿Renovar ya los códigos semanales?", boton: "Renovar"})) return;
   conBoton(b, async () => {
     const filas = Object.entries((await api("POST", "/api/rotar", {simular: simulando()})).resultado);
+    const idDe = (n) => (USUARIOS.find(u => u.nombre === n) || {}).id;
+    cargarEstado();
     $("resTitulo").textContent = "Códigos renovados";
     $("resCuerpo").innerHTML = (simulando() ? '<div class="aviso">Modo prueba: no se ha cambiado nada.</div>' : "") +
       (filas.length ? `<table>${filas.map(([n, x]) => `<tr><td><b>${esc(n)}</b></td><td>${x.error ? `<span class="peligro">${esc(x.error)}</span>` : `<span style="font-family:ui-monospace,Menlo,monospace; font-weight:700">${esc(x.codigo)}</span>`}</td>
-        <td>${x.enlace ? `<a class="boton" href="${esc(x.enlace)}" target="_blank" rel="noopener">${ico("whatsapp")}</a>` : ""}</td></tr>`).join("")}</table>`
+        <td>${x.enlace ? `<a class="boton" href="${esc(x.enlace)}" target="_blank" rel="noopener">${ico("whatsapp")}</a>` : ""}
+          ${x.estado === "por_confirmar" && idDe(n) ? `<button type="button" title="Ya lo he enviado" onclick="confirmarRenovacion('${esc(idDe(n))}', this)">✅</button>` : ""}
+          ${x.error ? '<span class="muted peq">Se reintentará solo</span>' : ""}</td></tr>`).join("")}</table>
+        ${filas.some(([, x]) => x.estado === "por_confirmar") ? '<p class="muted peq">Envía cada mensaje y pulsa ✅: hasta entonces sigue valiendo el código anterior.</p>' : ""}`
         : '<div class="vacio">No hay personas con código semanal.</div>');
     $("dlgResultado").showModal();
   });

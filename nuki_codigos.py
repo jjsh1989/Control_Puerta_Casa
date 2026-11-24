@@ -50,6 +50,8 @@ def ruta_gestion():
 NUKI_API = "https://api.nuki.io"
 TIPO_CODIGO_TECLADO = 13  # tipo de autorización "Keypad code" en la API de Nuki
 CLAVE_INVITADOS = "_invitados"  # dentro de estado.json
+CLAVE_RENOVACIONES = "_renovaciones"  # renovaciones aún sin entregar, por persona (dentro de estado.json)
+REINTENTOS_AUTOMATICOS = 6
 
 # Quién lanza las acciones (se anota en el historial): "terminal", "panel" o "semanal"
 ORIGEN = "terminal"
@@ -550,9 +552,16 @@ def enviar_whatsapp(config, destinatario, texto, simular=False, abrir=True):
     """Envía el mensaje a la persona por su canal (WhatsApp, Telegram o ambos) y lo anota.
     Con «ambos» basta con que llegue por uno; el fallo del otro queda en el historial.
     Con el proveedor de WhatsApp «enlace» devuelve el enlace wa.me."""
+    return enviar_mensaje(config, destinatario, texto, simular, abrir)[0]
+
+
+def enviar_mensaje(config, destinatario, texto, simular=False, abrir=True):
+    """Como enviar_whatsapp, pero devuelve (enlace, entregado). «entregado» es False cuando
+    el mensaje solo quedó preparado (proveedor «enlace»: falta que alguien pulse Enviar)."""
     canal = destinatario.get("canal_envio") or "whatsapp"
+    automatico = config["whatsapp"].get("proveedor", "enlace") != "enlace"
     if canal not in ("telegram", "ambos"):
-        return _enviar_solo_whatsapp(config, destinatario, texto, simular, abrir)
+        return _enviar_solo_whatsapp(config, destinatario, texto, simular, abrir), automatico
     error_tg = None
     try:
         if not destinatario.get("telegram_chat"):
@@ -569,13 +578,14 @@ def enviar_whatsapp(config, destinatario, texto, simular=False, abrir=True):
     if canal == "telegram":
         if error_tg:
             raise error_tg
-        return None
+        return None, True
     try:
-        return _enviar_solo_whatsapp(config, destinatario, texto, simular, abrir)
+        enlace = _enviar_solo_whatsapp(config, destinatario, texto, simular, abrir)
     except Exception:
         if error_tg:
             raise
-        return None  # llegó por Telegram
+        return None, True  # llegó por Telegram
+    return enlace, automatico or not error_tg
 
 
 def _enviar_solo_whatsapp(config, destinatario, texto, simular=False, abrir=True):
@@ -671,7 +681,11 @@ def borrar_codigos_de(config, nuki, destinatario, existentes=None, motivo="Anula
             borrados += 1
     if not nuki.simular:
         estado = cargar_json(ruta_estado(), {})
-        if estado.pop(destinatario["id"], None) is not None:
+        quitado = estado.pop(destinatario["id"], None) is not None
+        if destinatario["id"] in estado.get(CLAVE_RENOVACIONES, {}):
+            estado[CLAVE_RENOVACIONES].pop(destinatario["id"])
+            quitado = True
+        if quitado:
             guardar_json(ruta_estado(), estado)
     return borrados
 
@@ -706,6 +720,8 @@ def renovar_codigo(config, nuki, destinatario, simular=False, abrir=True, codigo
     desde = datetime.now(timezone.utc)
     hasta = None if fijo else desde + timedelta(days=dias)
     franja = destinatario.get("franja")
+    anteriores = [a["id"] for a in existentes
+                  if a.get("type") == TIPO_CODIGO_TECLADO and a.get("name") == nombre_auth and a.get("id")]
     nuki.crear_codigo(id_cerradura, nombre_auth, codigo, desde, hasta, franja)
     validez = "sin caducidad (fijo)" if fijo else f"válido hasta el {hasta.astimezone():%d/%m/%Y %H:%M}"
     log(f"Código nuevo para {destinatario['nombre']}: {validez}")
@@ -728,26 +744,123 @@ def renovar_codigo(config, nuki, destinatario, simular=False, abrir=True, codigo
     )
     if texto_franja(franja):
         texto += f"\nSolo funciona {texto_franja(franja)}."
-    try:
+
+    if simular:
         enlace = enviar_whatsapp(config, destinatario, texto, simular, abrir)
-    except Exception:
+        borrar_codigos_de(config, nuki, destinatario, existentes, "Renovado")
+        return {"codigo": codigo, "hasta": hasta.isoformat() if hasta else None, "fijo": fijo,
+                "enlace": enlace, "mensaje": texto, "estado": "enviado"}
+
+    # Se apunta antes de enviar: si el panel se reinicia o el envío falla, la renovación sigue pendiente
+    # y el reintento manda ESTE mismo código. Los anteriores no se tocan hasta confirmar la entrega.
+    rec = {"estado": "pendiente", "codigo": codigo, "nombre_auth": nombre_auth, "desde": desde.isoformat(),
+           "hasta": hasta.isoformat() if hasta else None, "fijo": fijo, "texto": texto,
+           "anteriores": anteriores, "intentos": 0}
+    _guardar_renovacion(destinatario["id"], rec)
+    return _entregar(config, nuki, destinatario, rec, abrir)
+
+
+# ---------------------------------------------------------------- renovaciones pendientes de entregar
+
+def renovaciones():
+    """{id de persona: renovación sin entregar} de la cuenta actual."""
+    return cargar_json(ruta_estado(), {}).get(CLAVE_RENOVACIONES, {})
+
+
+def _guardar_renovacion(persona_id, rec):
+    estado = cargar_json(ruta_estado(), {})
+    lista = estado.setdefault(CLAVE_RENOVACIONES, {})
+    if rec is None:
+        lista.pop(persona_id, None)
+    else:
+        lista[persona_id] = rec
+    guardar_json(ruta_estado(), estado)
+
+
+def _resumen(rec, enlace=None):
+    return {"codigo": rec["codigo"], "hasta": rec["hasta"], "fijo": rec["fijo"], "enlace": enlace,
+            "mensaje": rec["texto"], "estado": rec["estado"]}
+
+
+def _entregar(config, nuki, destinatario, rec, abrir=False):
+    """Envía el código de una renovación. Si consta que ha llegado, la completa (retira los anteriores).
+    Si solo quedó preparado (enlace de WhatsApp), queda «por confirmar». Si falla, queda «fallido»."""
+    rec["intentos"] = rec.get("intentos", 0) + 1
+    rec["ultimo_intento"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    try:
+        enlace, entregado = enviar_mensaje(config, destinatario, rec["texto"], False, abrir)
+    except Exception as e:
+        rec.update(estado="fallido", error=str(e)[:300])
+        _guardar_renovacion(destinatario["id"], rec)
         registrar("Renovación incompleta", destinatario["nombre"],
-                  "No se pudo enviar el código nuevo: se mantiene el anterior", simular, ok=False)
+                  "No se pudo enviar el código nuevo: se mantiene el anterior y se reintentará", ok=False)
         raise
+    if not entregado:
+        rec.update(estado="por_confirmar", error="")
+        _guardar_renovacion(destinatario["id"], rec)
+        registrar("Renovación por confirmar", destinatario["nombre"],
+                  "Código nuevo preparado; el anterior sigue valiendo hasta que confirmes que lo has enviado")
+        return _resumen(rec, enlace)
+    _completar(config, nuki, destinatario, rec)
+    return _resumen(rec, enlace)
 
-    # 3) Ahora sí, retirar los códigos anteriores (la lista se leyó antes de crear el nuevo)
-    borrar_codigos_de(config, nuki, destinatario, existentes, "Renovado")
 
-    if not simular:
-        apuntar_codigo(codigo, destinatario, "fijo" if fijo else ("semanal" if destinatario.get("automatico", True) else "temporal"),
-                       nombre_auth, desde, hasta)
-        estado = cargar_json(ruta_estado(), {})
-        estado[destinatario["id"]] = {"creado": desde.isoformat(),
-                                      "caduca": hasta.isoformat() if hasta else None,
-                                      "fijo": fijo, "codigo": codigo}
-        guardar_json(ruta_estado(), estado)
-    return {"codigo": codigo, "hasta": hasta.isoformat() if hasta else None, "fijo": fijo,
-            "enlace": enlace, "mensaje": texto}
+def _completar(config, nuki, destinatario, rec):
+    """El código nuevo ya ha llegado: se retiran los anteriores y se apunta como el vigente."""
+    id_cerradura = config["nuki"]["smartlock_id"]
+    viejos = set(rec.get("anteriores") or [])
+    if viejos:
+        borrar_codigos_de(config, nuki, destinatario,
+                          [a for a in nuki.autorizaciones(id_cerradura) if a.get("id") in viejos], "Renovado")
+    desde = datetime.fromisoformat(rec["desde"])
+    hasta = datetime.fromisoformat(rec["hasta"]) if rec["hasta"] else None
+    apuntar_codigo(rec["codigo"], destinatario,
+                   "fijo" if rec["fijo"] else ("semanal" if destinatario.get("automatico", True) else "temporal"),
+                   rec["nombre_auth"], desde, hasta)
+    estado = cargar_json(ruta_estado(), {})
+    estado[destinatario["id"]] = {"creado": rec["desde"], "caduca": rec["hasta"], "fijo": rec["fijo"],
+                                  "codigo": rec["codigo"]}
+    estado.get(CLAVE_RENOVACIONES, {}).pop(destinatario["id"], None)
+    guardar_json(ruta_estado(), estado)
+    rec["estado"] = "enviado"
+
+
+def reintentar_renovacion(config, nuki, destinatario, abrir=False):
+    """Vuelve a enviar el MISMO código de la renovación pendiente de esta persona."""
+    rec = renovaciones().get(destinatario["id"])
+    if not rec:
+        raise RuntimeError(f"{destinatario['nombre']} no tiene ninguna renovación pendiente.")
+    return _entregar(config, nuki, destinatario, rec, abrir)
+
+
+def confirmar_renovacion(config, nuki, destinatario):
+    """El gestor confirma que ha enviado el código (modo enlace): se retiran los anteriores."""
+    rec = renovaciones().get(destinatario["id"])
+    if not rec:
+        raise RuntimeError(f"{destinatario['nombre']} no tiene ninguna renovación pendiente.")
+    _completar(config, nuki, destinatario, rec)
+    registrar("Renovación confirmada", destinatario["nombre"], "Código nuevo enviado; se retira el anterior")
+    return _resumen(rec)
+
+
+def reintentar_fallidas(config):
+    """Reintenta solas las renovaciones fallidas de la cuenta actual (cada persona por separado).
+    Las «por confirmar» esperan al gestor. Devuelve {nombre: resultado o {"error": ...}}."""
+    pendientes = renovaciones()
+    if not pendientes:
+        return {}
+    nuki = Nuki(config["nuki"].get("token", ""))
+    resultados = {}
+    for d in config["destinatarios"]:
+        rec = pendientes.get(d["id"])
+        if not rec or rec.get("estado") not in ("fallido", "pendiente") or rec.get("intentos", 0) >= REINTENTOS_AUTOMATICOS:
+            continue
+        try:
+            resultados[d["nombre"]] = _entregar(config, nuki, d, rec)
+        except Exception as e:
+            log(f"Reintento de renovación para {d['nombre']} fallido: {e}")
+            resultados[d["nombre"]] = {"error": str(e)}
+    return resultados
 
 
 # ---------------------------------------------------------------- invitados
