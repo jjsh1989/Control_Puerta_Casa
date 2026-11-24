@@ -46,8 +46,7 @@ def leer(cfg, forzar=False):
     token, sid = cfg["nuki"].get("token"), cfg["nuki"].get("smartlock_id")
     if not (token and sid):
         return None
-    _, r = nk.peticion("GET", f"{nk.NUKI_API}/smartlock/{sid}", cabeceras=nk.Nuki(token)._cab())
-    r = r if isinstance(r, dict) else {}
+    r = nk.Nuki(token).estado(sid, max_edad=0 if forzar else 60)
     st = r.get("state") or {}
     carga = st.get("batteryCharge")
     datos = {
@@ -57,7 +56,7 @@ def leer(cfg, forzar=False):
         "cargando": bool(st.get("batteryCharging")),
         "teclado_critica": bool(st.get("keypadBatteryCritical")),
         "sensor_critica": bool(st.get("doorsensorBatteryCritical")),
-        "leido": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "leido": nk.hora_lectura(r) or datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     _cache[cuenta] = (time.time(), datos)
     return datos

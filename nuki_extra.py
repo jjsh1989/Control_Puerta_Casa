@@ -47,20 +47,13 @@ AJUSTES = [
     ("advancedConfig", "autoUpdateEnabled", "bool", "Actualizar el firmware automáticamente", "", None),
 ]
 
-_CACHE = {}  # (token, id) -> (momento, datos)
-
-
 def _dispositivo(nuki, sid, fresco=False):
-    clave = (nuki.token, str(sid))
-    m, d = _CACHE.get(clave, (0, None))
-    if fresco or not d or time.time() - m > 120:
-        d = nuki.estado(sid)
-        _CACHE[clave] = (time.time(), d)
-    return d
+    """Capacidades y ajustes cambian poco: vale una lectura de hace 2 minutos (salvo «fresco»)."""
+    return nuki.estado(sid, max_edad=0 if fresco else 120)
 
 
 def olvidar(nuki, sid):
-    _CACHE.pop((nuki.token, str(sid)), None)
+    nk.LECTURAS.olvidar(nuki.token, sid)
 
 
 def capacidades(cfg, admin=False):

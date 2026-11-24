@@ -102,7 +102,7 @@ def revisar_llave(cuenta, cfg, ahora):
     if not (n.get("token") and n.get("smartlock_id")):
         return
     import alertas
-    st = (nk.Nuki(n["token"]).estado(n["smartlock_id"]).get("state") or {})
+    st = (nk.Nuki(n["token"]).estado(n["smartlock_id"], max_edad=60).get("state") or {})
     if st.get("state") == 1:
         return  # ya está cerrada con llave
     abierta = st.get("doorState") == 3
@@ -151,7 +151,7 @@ def resumen(cuenta, cfg, dia):
             lineas.append(f"🚪 Aperturas: {len(entradas)}" + (" · " + ", ".join(f"{q} ({c})" for q, c in
                                                                          sorted(quienes.items(), key=lambda x: -x[1])[:5])
                                                            if quienes else ""))
-            st = (nuki.estado(n["smartlock_id"]).get("state") or {})
+            st = (nuki.estado(n["smartlock_id"], max_edad=60).get("state") or {})
             lineas.append(f"🔒 Ahora: {alertas.ESTADOS_CERROJO.get(st.get('state'), 'desconocido')}"
                           + (f" · batería {st['batteryCharge']} %" if st.get("batteryCharge") is not None else ""))
         except Exception as e:

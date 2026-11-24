@@ -268,6 +268,7 @@ class ErrorReasignar(RuntimeError):
 def _olvidar_lecturas(casa):
     """Borra lo leído y guardado de la cerradura de una casa (batería, estado de los avisos),
     para que tras cambiar de cerradura no se mezclen datos de la anterior."""
+    nk.LECTURAS.olvidar()  # y las lecturas recientes del estado de los dispositivos
     with cuentas.en_cuenta(casa, "panel"):
         estado = nk.cargar_json(nk.ruta_estado(), {})
         quitados = [estado.pop(k) for k in (alertas.CLAVE_ESTADO, bateria.CLAVE_ESTADO) if k in estado]
@@ -866,13 +867,15 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == "/api/cerradura":
                 if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
                     raise RuntimeError("Configura primero la cerradura en Ajustes.")
-                r = nuki.estado(cfg["nuki"]["smartlock_id"])
+                # una lectura de hace unos segundos vale; «Actualizar» y tras una orden se pide nueva
+                r = nuki.estado(cfg["nuki"]["smartlock_id"], max_edad=0 if params.get("actualizar") == "1" else 15)
                 st = r.get("state") or {}
                 return self._ok({"nombre": (r.get("name") or "").strip(), "cerrojo": st.get("state"),
                                  "cerrojo_texto": alertas.ESTADOS_CERROJO.get(st.get("state"), "desconocido"),
                                  "puerta": st.get("doorState"),
                                  "puerta_texto": alertas.ESTADOS_PUERTA.get(st.get("doorState"), "desconocido"),
-                                 "sensor": st.get("doorState") in (2, 3), "online": r.get("serverState", 0) == 0})
+                                 "sensor": st.get("doorState") in (2, 3), "online": r.get("serverState", 0) == 0,
+                                 "leido": nk.hora_lectura(r)})
             if ruta == "/api/nuki/capacidades":
                 return self._ok(nuki_extra.capacidades(cfg, admin))
             if ruta == "/api/programaciones":

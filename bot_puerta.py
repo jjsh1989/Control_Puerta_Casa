@@ -107,7 +107,7 @@ def _texto_estado(cuenta, nombre_casa):
         n = cfg.get("nuki") or {}
         if not (n.get("token") and n.get("smartlock_id")):
             return f"🏠 {nombre_casa}\nLa cerradura no está configurada en el panel.", False
-        r = nk.Nuki(n["token"]).estado(n["smartlock_id"])
+        r = nk.Nuki(n["token"]).estado(n["smartlock_id"], max_edad=15)
         st = r.get("state") or {}
         lineas = [f"🏠 {nombre_casa} · {(r.get('name') or 'Puerta').strip()}",
                   f"Cerradura: {alertas.ESTADOS_CERROJO.get(st.get('state'), 'desconocido')}"]
@@ -117,7 +117,7 @@ def _texto_estado(cuenta, nombre_casa):
             lineas.append(f"Batería: {st['batteryCharge']} %" + (" ⚠️" if st.get("batteryCritical") else ""))
         if r.get("serverState", 0) != 0:
             lineas.append("⚠️ La cerradura no está conectada ahora mismo.")
-        lineas.append(f"Actualizado a las {datetime.now():%H:%M:%S}")
+        lineas.append(f"Leído a las {datetime.fromtimestamp(r.get('_leido') or time.time()):%H:%M:%S}")
         return "\n".join(lineas), bool(n.get("opener_id"))
 
 

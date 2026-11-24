@@ -581,7 +581,8 @@
         <div class="puerta-estado">
           <div class="estado"><svg class="i"><use href="#i-puerta"/></svg><b id="puNombre">Puerta</b>
             <span class="chip" id="puCerrojo">–</span><span class="chip oculto" id="puSensor">–</span>
-            <button class="icono-btn fantasma" title="Actualizar" aria-label="Actualizar estado" onclick="cargarPuerta(this)"><svg class="i"><use href="#i-renovar"/></svg></button></div>
+            <span class="muted peq" id="puLeido"></span>
+            <button class="icono-btn fantasma" title="Actualizar" aria-label="Actualizar estado" onclick="cargarPuerta(this, true)"><svg class="i"><use href="#i-renovar"/></svg></button></div>
           <div class="acciones">
             <button onclick="accionPuerta('bloquear', this)"><svg class="i"><use href="#i-candado"/></svg>Bloquear</button>
             <button onclick="accionPuerta('desbloquear', this)"><svg class="i"><use href="#i-llave"/></svg>Desbloquear</button>
@@ -2387,12 +2388,14 @@ async function quitarTelegram(b) {
 }
 
 // ---------- puerta: estado y acciones
-async function cargarPuerta(b) {
+// «nueva»: pedir una lectura nueva a Nuki (botón Actualizar y tras una orden); si no, vale una de hace unos segundos
+async function cargarPuerta(b, nueva) {
   await conBoton(b, async () => {
     let p;
-    try { p = (await api("GET", "/api/cerradura")).resultado; }
-    catch (e) { $("puCerrojo").textContent = "sin datos"; $("puCerrojo").className = "chip"; return; }
+    try { p = (await api("GET", "/api/cerradura" + (nueva ? "?actualizar=1" : ""))).resultado; }
+    catch (e) { $("puCerrojo").textContent = "sin datos"; $("puCerrojo").className = "chip"; $("puLeido").textContent = ""; return; }
     $("puNombre").textContent = p.nombre || "Puerta";
+    $("puLeido").textContent = p.leido ? "leído a las " + new Date(p.leido).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "";
     if (!p.online) { $("puCerrojo").textContent = "📡 sin conexión"; $("puCerrojo").className = "chip mal"; $("puSensor").classList.add("oculto"); return; }
     $("puCerrojo").textContent = (p.cerrojo === 1 ? "🔒 " : p.cerrojo === 254 ? "⚠️ " : "🔓 ") + p.cerrojo_texto;
     $("puCerrojo").className = "chip" + (p.cerrojo === 1 ? " on" : p.cerrojo === 254 ? " mal" : " aviso");
@@ -2410,7 +2413,9 @@ async function accionPuerta(que, b) {
   if (!await confirmar(textos[1], {titulo: textos[0], boton: textos[2], peligro: !["bloquear", "lockngo"].includes(que)})) return;
   await conBoton(b, async () => {
     await api("POST", "/api/cerradura/accion", {accion: que});
-    aviso("Orden enviada a la cerradura"); setTimeout(() => cargarPuerta(), 6000); setTimeout(() => cargarPuerta(), 15000);
+    // la orden se ha enviado, pero el estado solo se da por bueno con una lectura nueva tras ella
+    $("puCerrojo").textContent = "⏳ comprobando…"; $("puCerrojo").className = "chip"; $("puLeido").textContent = "";
+    aviso("Orden enviada a la cerradura"); setTimeout(() => cargarPuerta(null, true), 6000); setTimeout(() => cargarPuerta(null, true), 15000);
   });
 }
 

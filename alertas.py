@@ -14,6 +14,7 @@ import nuki_codigos as nk
 
 CLAVE_ESTADO = "_alertas"  # dentro de estado.json de cada cuenta
 CADA_SEGUNDOS = 30
+LECTURA_VALE = 15  # segundos: los avisos pueden usar una lectura del estado así de reciente
 VENTANA_INCORRECTOS = timedelta(minutes=10)
 
 TIPOS = {
@@ -245,7 +246,8 @@ def _revisar_estado(cfg, a, sid, token, e):
         e.pop("abierta_desde", None)
         return 0
     try:
-        datos = nk.Nuki(token).estado(sid)
+        # vale una lectura de hace unos segundos (p. ej. la del panel); se revisa cada CADA_SEGUNDOS
+        datos = nk.Nuki(token).estado(sid, max_edad=LECTURA_VALE)
     except Exception as err:
         return _sin_respuesta(cfg, a, e, f"No se puede leer la cerradura: {err}")
     st = datos.get("state") or {}

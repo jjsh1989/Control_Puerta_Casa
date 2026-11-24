@@ -24,6 +24,8 @@ import os
 import re
 import secrets
 import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -418,6 +420,93 @@ def fecha_iso(dt):
 
 # ---------------------------------------------------------------- Nuki
 
+class LecturasNuki:
+    """Lecturas recientes del estado de cada dispositivo Nuki, compartidas por todo el programa
+    (panel, avisos, batería, Telegram, resúmenes, programaciones).
+
+    - Quien pide con «max_edad» acepta una lectura de hace como mucho esos segundos.
+    - Si varias partes piden lo mismo a la vez, se hace una sola petición a Nuki: las demás esperan
+      y usan su resultado.
+    - Con max_edad=0 se pide siempre una lectura nueva (empezada después de pedirla).
+    - Una orden (abrir, bloquear…), un cambio de ajustes o un cambio de cerradura descartan lo leído;
+      una lectura que ya estaba en camino cuando llegó la orden tampoco se guarda."""
+
+    ERROR_VALE = 10  # segundos durante los que un fallo se comparte (si Nuki no responde, no se insiste)
+
+    def __init__(self):
+        self.cerrojo = threading.Lock()
+        self.cerrojos = {}     # (token, id) -> Lock: una petición a la vez por dispositivo
+        self.lecturas = {}     # (token, id) -> {"inicio", "datos" | "error", "gen"}
+        self.gen = {}          # (token, id) -> contador que sube al olvidar
+        self.gen_todo = 0
+        self.peticiones = self.aprovechadas = 0
+        self.desde = time.time()
+
+    def _gen(self, clave):
+        return (self.gen_todo, self.gen.get(clave, 0))
+
+    def leer(self, pedir, token, id_disp, max_edad=0):
+        """Devuelve una copia del estado del dispositivo. «pedir()» hace la petición real a Nuki."""
+        clave, pedido = (token, str(id_disp)), time.time()
+        with self.cerrojo:
+            cerrojo = self.cerrojos.setdefault(clave, threading.Lock())
+        with cerrojo:
+            l = self.lecturas.get(clave)
+            if l and l["gen"] == self._gen(clave):
+                edad = time.time() - l["inicio"]
+                if "error" in l:
+                    if l["inicio"] >= pedido or edad <= min(max_edad, self.ERROR_VALE):
+                        raise RuntimeError(l["error"])
+                elif l["inicio"] >= pedido or (max_edad > 0 and edad <= max_edad):
+                    self.aprovechadas += 1
+                    return self._copia(l)
+            inicio, gen = time.time(), self._gen(clave)
+            self._contar()
+            try:
+                datos = pedir()
+            except Exception as e:
+                if gen == self._gen(clave):
+                    self.lecturas[clave] = {"inicio": inicio, "error": str(e), "gen": gen}
+                raise
+            l = {"inicio": inicio, "datos": datos, "gen": gen}
+            if gen == self._gen(clave):  # si llegó una orden mientras se leía, no se guarda
+                self.lecturas[clave] = l
+            return self._copia(l)
+
+    @staticmethod
+    def _copia(l):
+        d = json.loads(json.dumps(l["datos"]))  # copia: quien la use puede modificarla sin afectar a los demás
+        d["_leido"] = l["inicio"]
+        return d
+
+    def _contar(self):
+        self.peticiones += 1
+        if time.time() - self.desde >= 3600:
+            log(f"Nuki: {self.peticiones} lecturas de estado en la última hora "
+                f"({self.aprovechadas} veces se aprovechó una lectura reciente)")
+            self.peticiones, self.aprovechadas, self.desde = 0, 0, time.time()
+
+    def olvidar(self, token=None, id_disp=None):
+        """Descarta lo leído de un dispositivo (o de todos si no se dice cuál)."""
+        with self.cerrojo:
+            if id_disp is None:
+                self.gen_todo += 1
+                self.lecturas.clear()
+            else:
+                clave = (token, str(id_disp))
+                self.gen[clave] = self.gen.get(clave, 0) + 1
+                self.lecturas.pop(clave, None)
+
+
+LECTURAS = LecturasNuki()
+
+
+def hora_lectura(datos):
+    """Hora (local, ISO) de una lectura devuelta por Nuki.estado."""
+    t = (datos or {}).get("_leido")
+    return datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds") if t else ""
+
+
 class Nuki:
     def __init__(self, token, simular=False):
         self.token = token
@@ -473,10 +562,14 @@ class Nuki:
             return
         peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/auth/{auth['id']}", cuerpo, self._cab())
 
-    def estado(self, id_cerradura):
-        """Datos completos de la cerradura (incluye state: cerrojo, sensor de puerta, batería)."""
-        _, r = peticion("GET", f"{NUKI_API}/smartlock/{id_cerradura}", cabeceras=self._cab())
-        return r if isinstance(r, dict) else {}
+    def estado(self, id_cerradura, max_edad=0):
+        """Datos completos de la cerradura (incluye state: cerrojo, sensor de puerta, batería).
+        Con «max_edad» (segundos) vale una lectura reciente ya hecha por otra parte del programa;
+        «_leido» dice cuándo se leyó."""
+        def pedir():
+            _, r = peticion("GET", f"{NUKI_API}/smartlock/{id_cerradura}", cabeceras=self._cab())
+            return r if isinstance(r, dict) else {}
+        return LECTURAS.leer(pedir, self.token, id_cerradura, max_edad)
 
     def actualizar_auth(self, id_cerradura, auth, cambios):
         """Modifica una autorización conservando lo que no se cambia (nombre, horario, fechas…)."""
@@ -501,7 +594,11 @@ class Nuki:
         if self.simular:
             log(f"[SIMULACIÓN] Guardaría {seccion}: {datos}")
             return
-        peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/{ruta}", datos, self._cab())
+        LECTURAS.olvidar(self.token, id_cerradura)
+        try:
+            peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/{ruta}", datos, self._cab())
+        finally:
+            LECTURAS.olvidar(self.token, id_cerradura)
 
     def accion(self, id_cerradura, accion):
         """Cerradura: 1 desbloquear · 2 bloquear · 3 abrir (pestillo) · 4 lock'n'go · 5 lock'n'go con pestillo.
@@ -511,7 +608,11 @@ class Nuki:
         if self.simular:
             log(f"[SIMULACIÓN] Enviaría la acción {accion} a la cerradura")
             return
-        peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/action", {"action": accion}, self._cab())
+        LECTURAS.olvidar(self.token, id_cerradura)  # lo leído antes de la orden ya no vale
+        try:
+            peticion("POST", f"{NUKI_API}/smartlock/{id_cerradura}/action", {"action": accion}, self._cab())
+        finally:
+            LECTURAS.olvidar(self.token, id_cerradura)
 
     def registro(self, id_cerradura, limite=200):
         """Registro de actividad de la cerradura (aperturas, cierres, códigos...)."""
