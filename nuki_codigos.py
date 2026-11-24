@@ -20,6 +20,7 @@ Con varias cuentas, añade --cuenta <id> (por defecto «principal»). «rotar» 
 import argparse
 import base64
 import json
+import os
 import re
 import secrets
 import sys
@@ -67,12 +68,30 @@ MENSAJE_INVITADO = ("Código de acceso temporal: {codigo}. Válido hasta el {has
 
 OYENTES_REGISTRO = []  # funciones que se enteran de cada entrada del historial (p. ej. Home Assistant)
 
+# Lo que nunca debe quedar en el historial ni en el log: códigos de puerta (6 cifras del 1 al 9),
+# enlaces con el mensaje o claves en la dirección (wa.me?text=…, callmebot…?apikey=…) y tokens de bots.
+_RE_CODIGO = re.compile(r"(?<!\d)[1-9]{6}(?!\d)")
+_RE_URL_CON_DATOS = re.compile(r"(https?://[^\s?#]+)[?#][^\s]*")
+_RE_CLAVE = re.compile(r"(?i)\b(apikey|api_key|token|auth_token|key)=[^\s&]+")
+_RE_TOKEN_BOT = re.compile(r"\b\d{6,}:[\w-]{30,}\b")
+
+
+def sanear(texto):
+    """Quita de un texto códigos de puerta, enlaces con datos y claves. Se puede aplicar varias veces."""
+    if not isinstance(texto, str) or not texto:
+        return texto
+    texto = _RE_URL_CON_DATOS.sub(r"\1?…", texto)
+    texto = _RE_CLAVE.sub(r"\1=…", texto)
+    texto = _RE_TOKEN_BOT.sub("…", texto)
+    return _RE_CODIGO.sub("••••••", texto)
+
 
 def registrar(accion, usuario="", detalle="", simulado=False, ok=True):
-    """Añade una entrada al historial de gestión."""
+    """Añade una entrada al historial de gestión: quién, qué, cuándo y si salió bien.
+    Nunca el código de la puerta ni el texto o el enlace del mensaje (se sanea por si acaso)."""
     entrada = {
         "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "accion": accion, "usuario": usuario, "detalle": detalle,
+        "accion": sanear(accion), "usuario": sanear(usuario), "detalle": sanear(detalle),
         "origen": getattr(cuentas._ctx, "origen", None) or ORIGEN,
         "gestor": cuentas.usuario_actual(), "simulado": simulado, "ok": ok,
     }
@@ -86,6 +105,69 @@ def registrar(accion, usuario="", detalle="", simulado=False, ok=True):
             oyente(entrada)
         except Exception:
             pass
+
+
+_ACCIONES_MENSAJE = ("Telegram enviado", "WhatsApp enviado", "WhatsApp preparado")
+VERSION_SANEADO = 1
+
+
+def _reescribir(ruta, lineas):
+    tmp = ruta.with_name(ruta.name + ".saneando")
+    tmp.write_text("".join(lineas), encoding="utf-8")
+    try:
+        os.chmod(tmp, ruta.stat().st_mode & 0o777)
+    except OSError:
+        pass
+    tmp.replace(ruta)
+
+
+def sanear_registros():
+    """Quita códigos de puerta, textos de mensajes, enlaces y claves del historial de cada casa y del log.
+    Conserva fecha, acción, quién y resultado. Repetirlo no cambia nada. Devuelve cuántas líneas cambió."""
+    cambiadas = 0
+    for c in cuentas.listar_cuentas():
+        ruta = cuentas.carpeta_cuenta(c["id"]) / "gestion.jsonl"
+        if not ruta.exists():
+            continue
+        nuevas, cambio = [], False
+        for linea in ruta.read_text(encoding="utf-8").splitlines(keepends=True):
+            try:
+                e = json.loads(linea)
+            except ValueError:
+                nuevas.append(sanear(linea)); cambio |= nuevas[-1] != linea
+                continue
+            antes = dict(e)
+            for k in ("accion", "usuario", "detalle"):
+                e[k] = sanear(e.get(k, ""))
+            if str(e.get("accion", "")).startswith(_ACCIONES_MENSAJE):
+                e["detalle"] = ""  # era el texto del mensaje
+            if e != antes:
+                cambio = True; cambiadas += 1
+                linea = json.dumps(e, ensure_ascii=False) + "\n"
+            nuevas.append(linea)
+        if cambio:
+            _reescribir(ruta, nuevas)
+    if RUTA_LOG.exists():
+        lineas = RUTA_LOG.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        nuevas = [sanear(l) for l in lineas]
+        n = sum(1 for x, y in zip(lineas, nuevas) if x != y)
+        if n:
+            _reescribir(RUTA_LOG, nuevas)
+            cambiadas += n
+    return cambiadas
+
+
+def sanear_registros_si_hace_falta():
+    """Al arrancar: sanea una vez los registros guardados por versiones anteriores."""
+    s = cuentas.leer_sistema()
+    if s.get("registros_saneados", 0) >= VERSION_SANEADO:
+        return
+    n = sanear_registros()
+    s = cuentas.leer_sistema()
+    s["registros_saneados"] = VERSION_SANEADO
+    cuentas.guardar_sistema(s)
+    if n:
+        log(f"Registros: retirados códigos y mensajes de {n} líneas antiguas")
 
 
 def leer_gestion(limite=500):
@@ -104,7 +186,7 @@ def leer_gestion(limite=500):
 
 
 def log(mensaje):
-    linea = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {mensaje}"
+    linea = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {sanear(str(mensaje))}"
     print(linea)
     try:
         RUTA_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -217,9 +299,9 @@ def peticion(metodo, url, cuerpo=None, cabeceras=None, formulario=False):
             return r.status, (json.loads(texto) if texto.strip().startswith(("{", "[")) else texto)
     except urllib.error.HTTPError as e:
         detalle = e.read().decode(errors="replace")
-        raise RuntimeError(f"Error {e.code} en {metodo} {url}: {detalle}") from None
+        raise RuntimeError(f"Error {e.code} en {metodo} {sanear(url)}: {sanear(detalle)[:500]}") from None
     except urllib.error.URLError as e:
-        raise RuntimeError(f"No se pudo conectar con {url}: {e.reason}") from None
+        raise RuntimeError(f"No se pudo conectar con {sanear(url)}: {e.reason}") from None
 
 
 DIAS_CORTOS = ["L", "M", "X", "J", "V", "S", "D"]
@@ -324,7 +406,7 @@ class Nuki:
             cuerpo["allowedFromDate"] = fecha_iso(desde)
             cuerpo["allowedUntilDate"] = fecha_iso(hasta)
         if self.simular:
-            log(f"[SIMULACIÓN] Crearía código en Nuki: {cuerpo}")
+            log(f"[SIMULACIÓN] Crearía un código en Nuki para «{nombre[:20]}»")
             return
         peticion("PUT", f"{NUKI_API}/smartlock/{id_cerradura}/auth", cuerpo, self._cab())
 
@@ -528,7 +610,7 @@ def limpiar_bajas(config, nuki):
             nuki.borrar(id_cerradura, a["id"])
             marcar_baja(nombre_baja=c["nombre_baja"], codigo=c["codigo"], retirado=True)
             registrar("Código desactivado retirado", c["persona"],
-                      f"Código {c['codigo']} (ya no se vigila)")
+                      "Ya no se vigila")
 
 
 def generar_codigo(codigos_existentes):
@@ -567,11 +649,11 @@ def enviar_mensaje(config, destinatario, texto, simular=False, abrir=True):
         if not destinatario.get("telegram_chat"):
             raise RuntimeError(f"{destinatario['nombre']} todavía no ha vinculado Telegram (pulsa «Telegram» en su ficha).")
         if simular:
-            log(f"[SIMULACIÓN] Telegram a {destinatario['nombre']}: {texto}")
+            log(f"[SIMULACIÓN] Telegram a {destinatario['nombre']}")
         else:
             import telegram
             telegram.enviar(destinatario["telegram_chat"], texto)
-        registrar("Telegram enviado", destinatario["nombre"], texto, simular)
+        registrar("Telegram enviado", destinatario["nombre"], "", simular)
     except Exception as e:
         error_tg = e
         registrar("Error al enviar Telegram", destinatario["nombre"], str(e), simular, ok=False)
@@ -597,9 +679,9 @@ def _enviar_solo_whatsapp(config, destinatario, texto, simular=False, abrir=True
         registrar("Error al enviar WhatsApp", destinatario["nombre"], str(e), simular, ok=False)
         raise
     if proveedor == "enlace":
-        registrar("WhatsApp preparado (pendiente de pulsar Enviar)", quien, texto, simular)
+        registrar("WhatsApp preparado (pendiente de pulsar Enviar)", quien, "", simular)
     else:
-        registrar(f"WhatsApp enviado ({proveedor})", quien, texto, simular)
+        registrar(f"WhatsApp enviado ({proveedor})", quien, "", simular)
     return enlace
 
 
@@ -610,7 +692,7 @@ def _enviar_whatsapp(config, destinatario, texto, simular=False, abrir=True):
     enlace = f"https://wa.me/{telefono.lstrip('+')}?text={urllib.parse.quote(texto)}"
 
     if simular:
-        log(f"[SIMULACIÓN] WhatsApp vía {proveedor} a {telefono}: {texto}")
+        log(f"[SIMULACIÓN] WhatsApp vía {proveedor} a {destinatario['nombre']}")
         return enlace if proveedor == "enlace" else None
 
     if proveedor == "twilio":
@@ -637,7 +719,7 @@ def _enviar_whatsapp(config, destinatario, texto, simular=False, abrir=True):
 
     elif proveedor == "enlace":
         # Sin servicio externo: abre WhatsApp en el Mac con el mensaje ya escrito.
-        log(f"Enlace para enviar el mensaje: {enlace}")
+        log(f"Enlace de WhatsApp preparado para {destinatario['nombre']}")
         if abrir and sys.platform == "darwin":
             import subprocess
             subprocess.run(["open", enlace], check=False)
@@ -675,9 +757,8 @@ def borrar_codigos_de(config, nuki, destinatario, existentes=None, motivo="Anula
         if a.get("type") == TIPO_CODIGO_TECLADO and a.get("name") == nombre_auth:
             log(f"Retirando código de {destinatario['nombre']} (id {a['id']})")
             como = retirar_o_vigilar(config, nuki, a, destinatario, motivo, forzar_borrado)
-            cod = f"Código {a['code']}" if a.get("code") else "Código"
             registrar("Código desactivado (vigilado)" if como == "desactivado" else "Código anulado",
-                      destinatario["nombre"], f"{cod} · {motivo}", nuki.simular)
+                      destinatario["nombre"], motivo, nuki.simular)
             borrados += 1
     if not nuki.simular:
         estado = cargar_json(ruta_estado(), {})
@@ -726,7 +807,7 @@ def renovar_codigo(config, nuki, destinatario, simular=False, abrir=True, codigo
     validez = "sin caducidad (fijo)" if fijo else f"válido hasta el {hasta.astimezone():%d/%m/%Y %H:%M}"
     log(f"Código nuevo para {destinatario['nombre']}: {validez}")
     registrar("Código fijo creado" if fijo else "Código creado", destinatario["nombre"],
-              f"Código {codigo}, {validez}", simular)
+              validez.capitalize(), simular)
 
     # 2) Enviar por WhatsApp
     if fijo:
@@ -790,7 +871,7 @@ def _entregar(config, nuki, destinatario, rec, abrir=False):
     try:
         enlace, entregado = enviar_mensaje(config, destinatario, rec["texto"], False, abrir)
     except Exception as e:
-        rec.update(estado="fallido", error=str(e)[:300])
+        rec.update(estado="fallido", error=sanear(str(e))[:300])
         _guardar_renovacion(destinatario["id"], rec)
         registrar("Renovación incompleta", destinatario["nombre"],
                   "No se pudo enviar el código nuevo: se mantiene el anterior y se reintentará", ok=False)
@@ -885,7 +966,7 @@ def crear_invitado(config, nuki, inquilino, horas, motivo="", telefono_invitado=
     nuki.crear_codigo(id_cerradura, nombre_auth, codigo, desde, hasta)
     hasta_txt = hasta.astimezone().strftime("%d/%m/%Y a las %H:%M")
     registrar("Código de invitado creado", inquilino["nombre"],
-              f"Código {codigo} hasta el {hasta_txt}" + (f" · Motivo: {motivo}" if motivo else ""),
+              f"Hasta el {hasta_txt}" + (f" · Motivo: {motivo}" if motivo else ""),
               simular)
 
     texto = config.get("mensaje_invitado", MENSAJE_INVITADO).format(
@@ -920,7 +1001,7 @@ def anular_invitado(config, nuki, nombre_auth, simular=False, motivo_registro="C
         for a in nuki.autorizaciones(id_cerradura):
             if a.get("name") == nombre_auth:
                 retirar_o_vigilar(config, nuki, a, persona, motivo_registro)
-    registrar(motivo_registro, inquilino, f"Código {inv['codigo']}" if inv else nombre_auth, simular)
+    registrar(motivo_registro, inquilino, f"Hasta el {datetime.fromisoformat(inv['hasta']).astimezone():%d/%m/%Y %H:%M}" if inv else "", simular)
     if not simular and inv:
         estado[CLAVE_INVITADOS] = [i for i in lista if i["nombre_auth"] != nombre_auth]
         guardar_json(ruta_estado(), estado)

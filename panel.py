@@ -1527,6 +1527,10 @@ def main():
     global CODIGO_INSTALACION
     cuentas.migrar_si_hace_falta(nk.log)
     cuentas.asegurar_uids()
+    try:  # antes de arrancar los hilos, para que nadie escriba mientras se reescribe
+        nk.sanear_registros_si_hace_falta()
+    except Exception as e:
+        nk.log(f"Registros: no se pudieron sanear ({e})")
     try:
         telegram.depurar_vinculos(nk.log)
     except Exception as e:
@@ -1585,4 +1589,7 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) == 3 and sys.argv[1] == "--recuperar":
         sys.exit(recuperar_por_consola(sys.argv[2]))
+    if len(sys.argv) == 2 and sys.argv[1] == "--sanear-registros":  # repetible; mejor con el panel parado
+        print(f"Líneas saneadas: {nk.sanear_registros()}")
+        sys.exit(0)
     main()
