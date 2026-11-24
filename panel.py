@@ -129,6 +129,42 @@ def ocultar_texto(texto):
     return _RE_COD.sub("••••••", texto)
 
 
+def categoria_historial(e):
+    """Tipo de una entrada del historial (los mismos que el filtro del panel)."""
+    a = (e.get("accion") or "").lower()
+    if not e.get("ok", True) or a.startswith("error"):
+        return "error"
+    if e.get("usuario") == "Docker / WhatsApp":
+        return "docker"
+    if any(p in a for p in ("sesión", "acceso", "contraseña", "mostrados")):
+        return "acceso"
+    for tipo, palabra in (("invitado", "invitado"), ("whatsapp", "whatsapp"), ("codigo", "código")):
+        if palabra in a:
+            return tipo
+    return "otro"
+
+
+def filtro_historial(revelar, tipo, texto, pruebas):
+    """Función que enmascara cada entrada (si no se ha pedido mostrar los datos) y luego la filtra.
+    La búsqueda se hace sobre lo que el usuario puede ver: sin «Mostrar datos» no encuentra teléfonos."""
+    texto = (texto or "").strip().lower()
+
+    def aceptar(e):
+        if not revelar:
+            e["usuario"] = ocultar_texto(e.get("usuario", ""))
+            e["detalle"] = ocultar_texto(e.get("detalle", ""))
+        if e.get("simulado") and not pruebas:
+            return None
+        if tipo and categoria_historial(e) != tipo:
+            return None
+        if texto and texto not in json.dumps(e, ensure_ascii=False).lower():
+            return None
+        return e
+    if texto:  # atajo: si el texto no está ni en la línea guardada, no hace falta leerla
+        aceptar.previo = lambda linea: texto in linea.lower()
+    return aceptar
+
+
 def estado_usuarios(cfg):
     """Inquilinos con su estado, sin teléfonos ni códigos (se piden con «Mostrar»)."""
     local = nk.cargar_json(nk.ruta_estado(), {})
@@ -818,14 +854,15 @@ class Manejador(BaseHTTPRequestHandler):
                         c["codigo"] = "••••••"
                 return self._ok(lista)
             if ruta == "/api/historial":
-                entradas = nk.leer_gestion(min(int(params.get("limite", 1000)), 5000))
-                if params.get("revelar") == "1":
+                revelar = params.get("revelar") == "1"
+                antes = params.get("antes") or None
+                if revelar and not antes:  # se apunta una vez, no en cada página
                     nk.registrar("Datos sensibles mostrados", s["usuario"], "Historial completo")
-                else:
-                    for e in entradas:
-                        e["usuario"] = ocultar_texto(e.get("usuario", ""))
-                        e["detalle"] = ocultar_texto(e.get("detalle", ""))
-                return self._ok(entradas)
+                aceptar = filtro_historial(revelar, params.get("tipo", ""), params.get("q", ""),
+                                           params.get("pruebas") == "1")
+                entradas, siguiente = nk.leer_gestion_pagina(
+                    max(1, min(int(params.get("limite", 50)), 500)), int(antes) if antes else None, aceptar)
+                return self._ok({"entradas": entradas, "siguiente": siguiente})
             if ruta == "/api/cerradura":
                 if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
                     raise RuntimeError("Configura primero la cerradura en Ajustes.")

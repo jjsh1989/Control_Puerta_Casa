@@ -170,19 +170,61 @@ def sanear_registros_si_hace_falta():
         log(f"Registros: retirados códigos y mensajes de {n} líneas antiguas")
 
 
+def _lineas_al_reves(ruta, antes=None, bloque=65536):
+    """Líneas de un fichero de la última a la primera, como (posición donde empieza, bytes).
+    Lee por bloques desde el final: no carga el fichero entero. Con «antes», empieza por la línea
+    que termina justo antes de esa posición."""
+    with open(ruta, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        fin = f.tell() if antes is None else max(0, min(int(antes), f.tell()))
+        resto, pos = b"", fin
+        while pos > 0:
+            leer = min(bloque, pos)
+            pos -= leer
+            f.seek(pos)
+            trozo = f.read(leer) + resto
+            partes = trozo.split(b"\n")
+            resto = partes[0]               # puede ser una línea a medias: se completa con el bloque anterior
+            inicio = pos + len(trozo)
+            for linea in reversed(partes[1:]):
+                inicio -= len(linea) + 1
+                if linea.strip():
+                    yield inicio + 1, linea
+        if resto.strip():
+            yield 0, resto
+
+
+def leer_gestion_pagina(limite=50, antes=None, aceptar=None):
+    """Una página del historial de gestión, de la entrada más nueva a la más antigua.
+    «antes» es la marca que devolvió la página anterior (posición en el fichero): como las entradas
+    nuevas se añaden al final, pasar de página no salta ni repite nada aunque entren entradas nuevas.
+    «aceptar(entrada)» puede filtrar (devuelve None) o transformar cada entrada. Si además tiene un
+    atributo «previo(texto de la línea)», las líneas que este rechace ni se llegan a leer como JSON.
+    Devuelve (entradas, marca de la siguiente página o None si no hay más)."""
+    ruta = ruta_gestion()
+    if not ruta.exists():
+        return [], None
+    salida, previo = [], getattr(aceptar, "previo", None)
+    for inicio, linea in _lineas_al_reves(ruta, antes):
+        if previo is not None and not previo(linea.decode("utf-8", "replace")):
+            continue
+        try:
+            e = json.loads(linea)
+        except ValueError:
+            continue
+        if aceptar is not None:
+            e = aceptar(e)
+            if e is None:
+                continue
+        salida.append(e)
+        if len(salida) >= limite:
+            return salida, (inicio if inicio > 0 else None)
+    return salida, None
+
+
 def leer_gestion(limite=500):
     """Últimas entradas del historial de gestión, de la más nueva a la más antigua."""
-    if not ruta_gestion().exists():
-        return []
-    with open(ruta_gestion(), encoding="utf-8") as f:
-        lineas = f.readlines()[-limite:]
-    salida = []
-    for l in reversed(lineas):
-        try:
-            salida.append(json.loads(l))
-        except ValueError:
-            pass
-    return salida
+    return leer_gestion_pagina(limite)[0]
 
 
 def log(mensaje):

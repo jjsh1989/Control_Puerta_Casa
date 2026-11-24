@@ -660,15 +660,16 @@
             <button onclick="cargarHistorial(this)" class="fantasma"><svg class="i"><use href="#i-renovar"/></svg>Actualizar</button>
           </div></div>
         <div class="filtros">
-          <select id="hTipo" onchange="pintarHistorial()">
+          <select id="hTipo" onchange="cargarHistorialPagina()">
             <option value="">Todo</option><option value="codigo">Códigos</option><option value="invitado">Invitados</option>
             <option value="whatsapp">WhatsApp</option><option value="acceso">Accesos al panel</option>
             <option value="docker">Sistema / WAHA</option><option value="error">Solo errores</option>
           </select>
-          <input id="hBuscar" placeholder="Buscar…" oninput="pintarHistorial()">
-          <label class="interruptor"><input type="checkbox" id="hPruebas" onchange="pintarHistorial()"> Incluir pruebas</label>
+          <input id="hBuscar" placeholder="Buscar…" oninput="buscarHistorial()">
+          <label class="interruptor"><input type="checkbox" id="hPruebas" onchange="cargarHistorialPagina()"> Incluir pruebas</label>
         </div>
         <div id="historial" class="tabla"><div class="vacio">Cargando…</div></div>
+        <div class="acciones" style="justify-content:center; margin-top:10px"><button id="hMas" class="fantasma" hidden onclick="verAnteriores(this)">Ver anteriores</button></div>
       </div>
       <div class="card">
         <div class="cab"><div><h2>Códigos emitidos</h2>
@@ -1413,7 +1414,7 @@ async function arrancarApp() {
   sel.classList.toggle("oculto", !admin || YO.cuentas.length < 2);
   sel.innerHTML = YO.cuentas.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join("");
   sel.value = YO.cuenta;
-  REGISTRO = []; HISTORIAL = [];
+  REGISTRO = []; HISTORIAL = []; HIST_SIGUIENTE = null;
   await cargarAjustes(); cargarEstado();
   let tab = null; try { tab = localStorage.getItem("pestana"); } catch (e) {}
   if (CONFIG.solo_camara) { if (["personas", "entradas"].includes(tab) || !tab) tab = "camara"; }
@@ -1708,11 +1709,30 @@ function pintarRegistro() {
 
 // ================= historial
 let CODIGOS = [];
+// El historial llega por páginas de 50, de la más nueva a la más antigua; los filtros los aplica el servidor
+// para que también encuentren movimientos antiguos. «antes» marca dónde sigue la página siguiente.
+let HIST_SIGUIENTE = null, HIST_PETICION = 0, histBuscarTimer = null;
+function urlHistorial(antes) {
+  const p = new URLSearchParams({limite: 50, tipo: $("hTipo").value, q: $("hBuscar").value.trim()});
+  if ($("hPruebas").checked) p.set("pruebas", "1");
+  if (histRevelado) p.set("revelar", "1");
+  if (antes != null) p.set("antes", antes);
+  return "/api/historial?" + p;
+}
+async function pedirHistorial(antes) {
+  const n = ++HIST_PETICION, r = (await api("GET", urlHistorial(antes))).resultado;
+  if (n !== HIST_PETICION) return;  // llegó tarde: ya se pidió otra cosa (p. ej. se siguió escribiendo en la búsqueda)
+  HISTORIAL = antes == null ? r.entradas : HISTORIAL.concat(r.entradas);
+  HIST_SIGUIENTE = r.siguiente;
+  pintarHistorial();
+}
+function cargarHistorialPagina(b) { return conBoton(b, () => pedirHistorial(null)); }
+function buscarHistorial() { clearTimeout(histBuscarTimer); histBuscarTimer = setTimeout(() => cargarHistorialPagina(), 300); }
+function verAnteriores(b) { if (HIST_SIGUIENTE != null) return conBoton(b, () => pedirHistorial(HIST_SIGUIENTE)); }
 function cargarHistorial(b) {
   return conBoton(b, async () => {
     const q = histRevelado ? "&revelar=1" : "";
-    [HISTORIAL, CODIGOS] = await Promise.all([api("GET", `/api/historial?limite=2000${q}`), api("GET", `/api/codigos?x=1${q}`)]).then(r => r.map(x => x.resultado));
-    pintarHistorial(); pintarCodigos();
+    await Promise.all([pedirHistorial(null), api("GET", `/api/codigos?x=1${q}`).then(r => { CODIGOS = r.resultado; pintarCodigos(); })]);
   });
 }
 function estadoCodigo(c) {
@@ -1737,19 +1757,9 @@ function revelarHistorial(b) {
   b.innerHTML = histRevelado ? ico("ojo-no") + "Ocultar datos" : ico("ojo") + "Mostrar datos";
   cargarHistorial(b);
 }
-function categoria(e) {
-  const a = (e.accion || "").toLowerCase();
-  if (!e.ok || a.startsWith("error")) return "error";
-  if (e.usuario === "Docker / WhatsApp") return "docker";
-  if (a.includes("sesión") || a.includes("acceso") || a.includes("contraseña") || a.includes("mostrados")) return "acceso";
-  if (a.includes("invitado")) return "invitado";
-  if (a.includes("whatsapp")) return "whatsapp";
-  if (a.includes("código")) return "codigo";
-  return "otro";
-}
 function pintarHistorial() {
-  const t = $("hTipo").value, q = $("hBuscar").value.toLowerCase(), pr = $("hPruebas").checked;
-  const f = HISTORIAL.filter(e => (pr || !e.simulado) && (!t || categoria(e) === t || (t === "error" && !e.ok)) && (!q || JSON.stringify(e).toLowerCase().includes(q)));
+  const f = HISTORIAL;
+  $("hMas").hidden = HIST_SIGUIENTE == null;
   if (!f.length) { $("historial").innerHTML = '<div class="vacio">No hay entradas.</div>'; return; }
   const origen = {panel: "Panel", semanal: "Automático", terminal: "Terminal"};
   $("historial").innerHTML = `<table><thead><tr><th>Fecha</th><th>Acción</th><th>Sobre</th><th>Detalle</th><th>Quién</th></tr></thead><tbody>` +
