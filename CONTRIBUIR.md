@@ -19,6 +19,27 @@ Abre una *issue* con la plantilla que corresponda. Ayuda mucho indicar:
 1. Haz un *fork* y crea una rama con un nombre que diga qué cambia (`arreglo-avisos-bateria`, `soporte-keypad-2`…).
 2. Prueba el cambio en tu instalación. Si toca la cerradura o las cámaras, di con qué modelos lo probaste.
 3. Explica en el *pull request* qué cambia y por qué. Mejor varios cambios pequeños que uno enorme.
+4. Las **pruebas automáticas** se ejecutan solas en cada *pull request* (pestaña *Actions*); tienen que pasar.
+
+### Pruebas automáticas
+
+Están en `tests/` y comprueban, con datos ficticios y servicios simulados, lo que no puede fallar: que la renovación
+no deje a nadie sin código (envío manual pendiente, fallo al enviar a una persona) y que las copias de seguridad
+no queden a medias y sirvan para recuperar todo en una instalación nueva. No usan claves, ni la cerradura, ni internet:
+cada prueba monta una instalación en una carpeta temporal y la borra al acabar.
+
+En local, con Python 3.12:
+
+```bash
+pip install "cryptography==43.0.3" "websocket-client==1.8.0" "paho-mqtt==2.1.0"
+python3 -m unittest discover -s tests -v
+```
+
+Para ver que una prueba detecta el fallo que corrige, se puede ejecutar contra otra versión del código
+(por ejemplo, una anterior extraída con `git archive`): `PUERTA_CODIGO=/ruta/a/esa/version python3 -m unittest discover -s tests`.
+
+Si añades un arreglo de algo que podría volver a romperse, añade su prueba: el escenario en `tests/escenarios.py`
+(se ejecuta dentro de la instalación de prueba) y las comprobaciones en un `tests/test_*.py`.
 
 ### Cómo está hecho
 

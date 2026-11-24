@@ -1,0 +1,25 @@
+# Pruebas automáticas: se ejecutan en cada propuesta de cambio (pull request) y en cada subida a main.
+# Usan datos ficticios y servicios simulados: no necesitan claves, ni cerradura, ni ningún equipo real.
+name: Pruebas
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias (las mismas versiones que el Dockerfile)
+        run: pip install "cryptography==43.0.3" "websocket-client==1.8.0" "paho-mqtt==2.1.0"
+      - name: Pruebas
+        run: python -m unittest discover -s tests -v

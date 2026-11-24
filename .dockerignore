@@ -9,3 +9,5 @@ estado.json
 __pycache__
 .claude
 copia-*.tar.gz
+tests
+.github
