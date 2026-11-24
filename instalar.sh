@@ -28,8 +28,17 @@ case "${1:-}" in
   codigo)
     cat datos/codigo_instalacion.txt 2>/dev/null || docker compose logs panel | grep -i "código de instalación" | tail -1; exit 0 ;;
   copia)
-    f="copia-puerta-$(date +%Y%m%d-%H%M).tar.gz"
-    tar czf "$f" datos secretos .env && chmod 600 "$f"
+    f="copia-puerta-$(date +%Y%m%d-%H%M%S).tar.gz"
+    # Se escribe en un temporal privado (600 desde el principio) y solo al acabar bien recibe su nombre:
+    # si algo falla no queda un archivo a medias que parezca una copia buena.
+    tmp=$(mktemp ".copia-puerta.XXXXXX")
+    trap 'rm -f "$tmp"' EXIT
+    if ! tar czf "$tmp" datos secretos .env || ! tar tzf "$tmp" >/dev/null; then
+      echo "ERROR: la copia NO se ha hecho (no se pudo leer o escribir algún archivo; mira el mensaje de arriba)." >&2
+      echo "No se ha guardado nada nuevo; las copias anteriores siguen como estaban." >&2
+      exit 1
+    fi
+    mv "$tmp" "$f"; trap - EXIT
     echo "Copia creada: $f  (contiene la clave maestra: guárdala en un sitio seguro)"; exit 0 ;;
 esac
 
