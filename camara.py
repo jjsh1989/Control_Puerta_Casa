@@ -180,6 +180,8 @@ def asignar(serial, cuenta=None, predeterminada=None, movimiento=None, tipos=Non
                     otra["predeterminada"] = False
         d["predeterminada"] = bool(predeterminada)
     cuentas.guardar_sistema(s)
+    if previo is not None and "MEMORIA" in globals():
+        MEMORIA.poner_previo(serial, d["previo"])
 
 
 def camara_puerta(cfg):
@@ -985,7 +987,17 @@ class Memoria(threading.Thread):
         self.reinicio_puente = 0
         self.reinicio_camara = {}  # sn -> cuándo se reinició la cámara por última vez
         self.tras_puente = set()   # cámaras que siguieron sin vídeo después de reiniciar el puente
+        self.previo = {}  # sn -> segundos a guardar antes del aviso (en memoria: no se lee el disco por trozo)
         self.cerrojo = threading.Lock()
+
+    def leer_previos(self):
+        """Lee de una vez los segundos de grabación previa de todas las cámaras (una lectura del disco)."""
+        disp = ajustes_sistema().get("dispositivos") or {}
+        self.previo = {sn: int((disp.get(sn) or {}).get("previo") or 0) for sn in set(disp) | set(CLIENTE.dispositivos)}
+
+    def poner_previo(self, sn, segundos):
+        """Lo llama asignar() al guardar los ajustes de una cámara: el cambio vale al momento."""
+        self.previo = {**self.previo, sn: int(segundos or 0)}
 
     def viva(self, sn):
         return sn in self.oyentes and time.time() - self.ultimo.get(sn, 0) < 5 and bool(self.trozos.get(sn))
@@ -1001,7 +1013,8 @@ class Memoria(threading.Thread):
 
     def _revisar(self):
         ahora = time.time()
-        quiero = {sn for sn in CLIENTE.dispositivos if ajustes_camara(sn)["previo"]
+        self.leer_previos()  # una lectura cada REVISAR segundos, para todas las cámaras
+        quiero = {sn for sn in CLIENTE.dispositivos if self.previo.get(sn)
                   and self.descanso.get(sn, 0) <= ahora} if CLIENTE.driver else set()
         for sn in list(self.oyentes):
             if sn not in quiero:
@@ -1016,6 +1029,7 @@ class Memoria(threading.Thread):
         return CLIENTE.dispositivos.get(sn, {}).get("nombre", sn)
 
     def _empezar(self, sn):
+        self.leer_previos()  # al (re)conectar, el valor actual de cada cámara
         hevc = {"v": False}
         cola = deque()
 
@@ -1028,7 +1042,7 @@ class Memoria(threading.Thread):
                 hevc["v"] = str(meta.get("videoCodec", "H264")).upper() in ("H265", "HEVC", "1")
             with self.cerrojo:
                 cola.append((ahora, trozo, _es_clave(trozo, hevc["v"])))
-                self._recortar(cola, ahora - ajustes_camara(sn)["previo"] - SEGUNDOS_CLIP - 20)
+                self._recortar(cola, ahora - self.previo.get(sn, 0) - SEGUNDOS_CLIP - 20)
             self.ultimo[sn] = ahora
             self.proximo.pop(sn, None)
             self.tras_puente.discard(sn)
