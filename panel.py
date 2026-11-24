@@ -1526,6 +1526,10 @@ class Manejador(BaseHTTPRequestHandler):
 def main():
     global CODIGO_INSTALACION
     cuentas.migrar_si_hace_falta(nk.log)
+    try:  # también en instalaciones que ya migraron con una versión anterior
+        cuentas.sanear_configs_migradas(nk.log)
+    except Exception as e:
+        nk.log(f"Migración: no se pudo revisar la configuración antigua ({type(e).__name__})")
     cuentas.asegurar_uids()
     try:  # antes de arrancar los hilos, para que nadie escriba mientras se reescribe
         nk.sanear_registros_si_hace_falta()

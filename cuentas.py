@@ -478,11 +478,39 @@ def migrar_si_hace_falta(log=print):
         if (origen / nombre).exists():
             shutil.move(str(origen / nombre), str(destino / nombre))
     viejo.rename(origen / "config.json.migrado")
-    # el archivo antiguo aún tenía el token en claro: se vacía
-    copia = _leer(origen / "config.json.migrado", {})
-    copia.get("nuki", {}).pop("token", None)
-    copia.get("whatsapp", {}).pop("waha", None)
-    copia.get("whatsapp", {}).get("twilio", {}).pop("auth_token", None)
-    _escribir(origen / "config.json.migrado", copia)
+    sanear_configs_migradas()  # el archivo antiguo aún tenía los secretos en claro
     log("Datos importados en la cuenta principal; los secretos se han guardado en la bóveda.")
     return True
+
+
+def sanear_configs_migradas(log=None):
+    """Quita los secretos (token de Nuki, WAHA, Twilio y claves de CallMeBot) de la copia que deja
+    la migración (config.json.migrado). Antes se asegura de que cada clave de CallMeBot esté en la
+    bóveda, para que el servicio la siga teniendo. Repetible: si ya está limpia no cambia nada.
+    Devuelve cuántos archivos ha limpiado. Nunca escribe los valores en ningún mensaje."""
+    limpiados = 0
+    for carpeta in (DATOS / "importar", CARPETA):
+        ruta = carpeta / "config.json.migrado"
+        if not ruta.exists():
+            continue
+        copia = _leer(ruta, {})
+        cambiado = False
+        for d in copia.get("destinatarios", []) or []:
+            clave = d.pop("callmebot_apikey", None)
+            if clave is not None:
+                cambiado = True
+            if clave and d.get("id") and not boveda_leer(f"callmebot:{d['id']}", CUENTA_PRINCIPAL):
+                boveda_guardar(f"callmebot:{d['id']}", clave, CUENTA_PRINCIPAL)
+        if copia.get("nuki", {}).pop("token", None) is not None:
+            cambiado = True
+        wa = copia.get("whatsapp", {}) or {}
+        if wa.pop("waha", None) is not None:
+            cambiado = True
+        if (wa.get("twilio") or {}).pop("auth_token", None) is not None:
+            cambiado = True
+        if cambiado:
+            _escribir(ruta, copia)
+            limpiados += 1
+    if limpiados and log:
+        log(f"Migración: retirados los secretos de {limpiados} copia(s) de la configuración antigua")
+    return limpiados
