@@ -38,12 +38,9 @@ def casas_de(chat):
                 cfg = nk.cargar_config()
             except Exception:
                 continue
-            for usuario, v in telegram.avisos_de(cfg).items():
-                if str(v.get("chat")) != str(chat):
-                    continue
-                u = cuentas.buscar_usuario(usuario)
-                if u and (u["rol"] == "admin" or u.get("cuenta") == c["id"]):
-                    salida.append((c["id"], u, c["nombre"]))
+            for usuario, v in telegram.avisos_vigentes(cfg, c["id"]).items():
+                if str(v.get("chat")) == str(chat):
+                    salida.append((c["id"], cuentas.buscar_usuario(usuario), c["nombre"]))
     return salida
 
 
@@ -260,8 +257,8 @@ def _ejecutar(chat, cuenta, u, accion):
         aviso = {"abrir": "🔓 {q} ha abierto la puerta desde Telegram.",
                  "portal": "🚪 {q} ha abierto el portal desde Telegram.",
                  "cerrar": "🔒 {q} ha cerrado con llave desde Telegram."}[accion]
-        for otro, v in telegram.avisos_de(cfg).items():
-            if v.get("chat") and str(v["chat"]) != str(chat):
+        for otro, v in telegram.avisos_vigentes(cfg).items():
+            if str(v["chat"]) != str(chat):
                 try:
                     telegram.enviar(v["chat"], aviso.format(q=u.get("nombre") or u["usuario"]))
                 except Exception:

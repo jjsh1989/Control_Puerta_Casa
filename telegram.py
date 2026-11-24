@@ -119,8 +119,65 @@ def avisos_de(cfg):
     return v
 
 
+def vinculo_valido(usuario, v, cuenta):
+    """Un vínculo de avisos vale si el usuario sigue existiendo, sigue teniendo acceso a esa cuenta
+    y es el mismo usuario que lo vinculó (no otro creado después con el mismo nombre)."""
+    u = cuentas.buscar_usuario(usuario)
+    if not (v and v.get("chat") and cuentas.pertenece(u, cuenta)):
+        return False
+    return not v.get("uid") or v["uid"] == u.get("uid")
+
+
+def avisos_vigentes(cfg, cuenta=None):
+    """Como avisos_de, pero solo con quienes siguen autorizados en esa cuenta (por defecto, la actual)."""
+    cuenta = cuenta or cuentas.cuenta_actual()
+    return {k: v for k, v in avisos_de(cfg).items() if vinculo_valido(k, v, cuenta)}
+
+
 def chats_avisos(cfg):
-    return [x["chat"] for x in avisos_de(cfg).values() if x.get("chat")]
+    return [x["chat"] for x in avisos_vigentes(cfg).values()]
+
+
+def depurar_vinculos(log=None):
+    """Quita los vínculos de avisos y los enlaces pendientes de quien ya no tiene acceso a esa cuenta
+    (usuario borrado, trasladado a otra vivienda o que ha dejado de ser administrador).
+    A los vínculos antiguos sin «uid» les apunta el del usuario actual. Se puede repetir sin problema."""
+    quitados = []
+    for c in cuentas.listar_cuentas():
+        with cuentas.en_cuenta(c["id"], "telegram"):
+            try:
+                cfg = nk.cargar_config()
+            except Exception:
+                continue
+            av, cambiado = avisos_de(cfg), False
+            for usuario, v in list(av.items()):
+                if not vinculo_valido(usuario, v, c["id"]):
+                    av.pop(usuario)
+                    quitados.append((c["id"], usuario))
+                    nk.registrar("Telegram desvinculado", "Avisos de " + usuario, "Ya no tiene acceso a esta casa")
+                    cambiado = True
+                elif not v.get("uid"):
+                    v["uid"] = cuentas.buscar_usuario(usuario).get("uid", "")
+                    cambiado = True
+            if cambiado:
+                if av:
+                    cfg["telegram_avisos"] = av
+                else:
+                    cfg.pop("telegram_avisos", None)
+                nk.guardar_config(cfg)
+    s, vivos = _enlaces()
+    antes = len(s.get("telegram_enlaces") or {})
+    for k, e in list(vivos.items()):
+        if e["destino"].startswith("_avisos"):
+            u = cuentas.buscar_usuario(e["destino"].partition(":")[2])
+            if not cuentas.pertenece(u, e["cuenta"]) or (e.get("uid") and e["uid"] != u.get("uid")):
+                vivos.pop(k)
+    if len(vivos) != antes:
+        s["telegram_enlaces"] = vivos
+        cuentas.guardar_sistema(s)
+    if quitados and log:
+        log(f"Telegram: retirados {len(quitados)} vínculos de avisos de usuarios sin acceso")
+    return quitados
 
 
 def enviar_a_todos(cfg, funcion, *args, recibos=None):
@@ -242,10 +299,13 @@ def crear_enlace(destino):
     cuenta = cuentas.cuenta_actual()
     # reutilizar uno vivo para el mismo destino
     for k, v in vivos.items():
-        if v["cuenta"] == cuenta and v["destino"] == destino:
+        if v["cuenta"] == cuenta and v["destino"] == destino and (
+                not v.get("uid") or v["uid"] == (cuentas.buscar_usuario(destino.partition(":")[2]) or {}).get("uid")):
             return f"https://t.me/{bot['usuario']}?start={k}"
     clave = secrets.token_urlsafe(18)
     vivos[clave] = {"cuenta": cuenta, "destino": destino, "creado": datetime.now().astimezone().isoformat()}
+    if destino.startswith("_avisos"):  # el enlace es de ESTE usuario, no de otro que se llame igual más tarde
+        vivos[clave]["uid"] = (cuentas.buscar_usuario(destino.partition(":")[2]) or {}).get("uid", "")
     s["telegram_enlaces"] = vivos
     cuentas.guardar_sistema(s)
     return f"https://t.me/{bot['usuario']}?start={clave}"
@@ -262,8 +322,11 @@ def _vincular(clave, chat, quien):
         cfg = nk.cargar_config()
         if e["destino"].startswith("_avisos"):
             usuario = e["destino"].partition(":")[2] or "admin"
+            u = cuentas.buscar_usuario(usuario)
+            if not cuentas.pertenece(u, e["cuenta"]) or (e.get("uid") and e["uid"] != u.get("uid")):
+                return "Este enlace ya no es válido: ese usuario ya no tiene acceso a esta casa."
             av = avisos_de(cfg)
-            av[usuario] = {"chat": chat, "nombre": quien}
+            av[usuario] = {"chat": chat, "nombre": quien, "uid": u.get("uid", "")}
             cfg["telegram_avisos"] = av
             nk.guardar_config(cfg)
             nk.registrar("Telegram vinculado", f"Avisos de {usuario}", quien)

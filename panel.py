@@ -218,7 +218,7 @@ def validar_destino(cfg, a, anterior, activo, quien):
 
 
 def config_publica(cfg, usuario=None):
-    av = telegram.avisos_de(cfg)
+    av = telegram.avisos_vigentes(cfg)
     c = json.loads(json.dumps(cfg))
     c["secciones"] = lista_secciones(cfg)
     c["alertas"] = alertas.ajustes(cfg)
@@ -578,7 +578,7 @@ class Manejador(BaseHTTPRequestHandler):
         enviado = []
         with cuentas.en_cuenta(u["cuenta"], usuario):
             cfg = nk.cargar_config()
-            chat = (telegram.avisos_de(cfg).get(usuario) or {}).get("chat")
+            chat = (telegram.avisos_vigentes(cfg, u["cuenta"]).get(usuario) or {}).get("chat")
             if chat and telegram.configurado():
                 try:
                     telegram.enviar(chat, texto)  # solo a SU Telegram
@@ -1239,6 +1239,7 @@ class Manejador(BaseHTTPRequestHandler):
                     raise RuntimeError("No puedes borrarte a ti mismo.")
                 cuentas.borrar_usuario(usuario)
                 cerrar_sesiones(usuario)
+                telegram.depurar_vinculos(nk.log)  # deja de recibir avisos y se anulan sus enlaces pendientes
                 nk.registrar("Usuario del panel borrado", usuario)
             else:
                 antes = cuentas.generacion_sesiones(cuentas.buscar_usuario(usuario))
@@ -1248,6 +1249,7 @@ class Manejador(BaseHTTPRequestHandler):
                     if usuario == s["usuario"]:
                         s["gen"] = gen  # quien se edita a sí mismo sigue dentro, ya con su rol y vivienda nuevos
                     cerrar_sesiones(usuario, salvo=s["token"])
+                    telegram.depurar_vinculos(nk.log)  # fuera de las casas a las que ya no tiene acceso
                 nk.registrar("Usuario del panel modificado", usuario)
             return self._ok()
         return self._error(404, "No encontrado")
@@ -1417,6 +1419,11 @@ class Manejador(BaseHTTPRequestHandler):
 def main():
     global CODIGO_INSTALACION
     cuentas.migrar_si_hace_falta(nk.log)
+    cuentas.asegurar_uids()
+    try:
+        telegram.depurar_vinculos(nk.log)
+    except Exception as e:
+        nk.log(f"Telegram: no se pudieron revisar los vínculos ({e})")
     if not cuentas.hay_usuarios():
         CODIGO_INSTALACION = "-".join(secrets.token_hex(2).upper() for _ in range(3))
         aviso = cuentas.DATOS / "codigo_instalacion.txt"

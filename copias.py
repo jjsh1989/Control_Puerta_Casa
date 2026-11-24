@@ -185,7 +185,7 @@ def chats_admin():
     for c in cuentas.listar_cuentas():
         with cuentas.en_cuenta(c["id"], "copias"):
             try:
-                av = telegram.avisos_de(nk.cargar_config())
+                av = telegram.avisos_vigentes(nk.cargar_config(), c["id"])
             except Exception:
                 continue
         for usuario, v in av.items():

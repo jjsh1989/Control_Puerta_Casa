@@ -277,6 +277,23 @@ def generacion_sesiones(u):
     return (u or {}).get("sesiones_gen", "")
 
 
+def asegurar_uids():
+    """Da a cada usuario un identificador fijo («uid») si aún no lo tiene. Sirve para que los vínculos
+    (p. ej. Telegram) no pasen a otro usuario que se cree más tarde con el mismo nombre."""
+    with _cerrojo:
+        lista = leer_usuarios()
+        faltan = [u for u in lista if not u.get("uid")]
+        for u in faltan:
+            u["uid"] = secrets.token_hex(8)
+        if faltan:
+            _guardar_usuarios(lista)
+
+
+def pertenece(u, cuenta):
+    """¿Puede este usuario ver esta cuenta (vivienda)? El administrador, todas; el gestor, solo la suya."""
+    return bool(u) and (u.get("rol") == "admin" or u.get("cuenta") == cuenta)
+
+
 def buscar_usuario(usuario):
     usuario = (usuario or "").strip().lower()
     return next((u for u in leer_usuarios() if u["usuario"] == usuario), None)
@@ -297,7 +314,7 @@ def crear_usuario(usuario, nombre, password, rol, cuenta):
             raise RuntimeError("Ese nombre de usuario ya existe.")
         lista.append({"usuario": usuario, "nombre": (nombre or usuario).strip(), "rol": rol,
                       "cuenta": cuenta, "creado": datetime.now().isoformat(timespec="seconds"),
-                      "sesiones_gen": _nueva_generacion(), **_hash(password)})
+                      "uid": secrets.token_hex(8), "sesiones_gen": _nueva_generacion(), **_hash(password)})
         _guardar_usuarios(lista)
 
 

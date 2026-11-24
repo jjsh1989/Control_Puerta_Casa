@@ -84,7 +84,7 @@ def chat_de(usuario):
     for c in cuentas.listar_cuentas():
         with cuentas.en_cuenta(c["id"], "dispositivos"):
             try:
-                v = telegram.avisos_de(nk.cargar_config()).get(usuario) or {}
+                v = telegram.avisos_vigentes(nk.cargar_config(), c["id"]).get(usuario) or {}
             except Exception:
                 continue
         if v.get("chat"):
