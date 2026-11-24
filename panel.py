@@ -217,6 +217,65 @@ def validar_destino(cfg, a, anterior, activo, quien):
     return {"por": por, "correo": correo, "telefono": tel, "wa_principal": principal}
 
 
+# ---------------------------------------------------------------- cerraduras Nuki por casa
+
+class ErrorReasignar(RuntimeError):
+    """El dispositivo Nuki ya está asignado a otra casa: hay que confirmar que se mueve."""
+
+
+def _olvidar_lecturas(casa):
+    """Borra lo leído y guardado de la cerradura de una casa (batería, estado de los avisos),
+    para que tras cambiar de cerradura no se mezclen datos de la anterior."""
+    with cuentas.en_cuenta(casa, "panel"):
+        estado = nk.cargar_json(nk.ruta_estado(), {})
+        quitados = [estado.pop(k) for k in (alertas.CLAVE_ESTADO, bateria.CLAVE_ESTADO) if k in estado]
+        if quitados:
+            nk.guardar_json(nk.ruta_estado(), estado)
+    bateria._cache.pop(casa, None)
+
+
+def asignar_nuki(casa, ident, reasignar=False):
+    """Comprueba que el dispositivo Nuki `ident` (cerradura u Opener) no es de otra casa.
+    Si lo es, solo se mueve con `reasignar` (confirmado por el administrador): se le quita a la otra casa."""
+    try:
+        ident = int(ident or 0)
+    except (TypeError, ValueError):
+        return
+    if not ident:
+        return
+    otras = []
+    for c in cuentas.listar_cuentas():
+        if c["id"] == casa:
+            continue
+        with cuentas.en_cuenta(c["id"], "panel"):
+            try:
+                n = nk.cargar_config()["nuki"]
+            except Exception:
+                continue
+        campos = [k for k in ("smartlock_id", "opener_id") if str(n.get(k) or "") == str(ident)]
+        if campos:
+            otras.append((c, campos))
+    if not otras:
+        return
+    if not reasignar:
+        nombres = ", ".join(f"«{c['nombre']}»" for c, _ in otras)
+        raise ErrorReasignar(f"Ese dispositivo Nuki ya está asignado a la casa {nombres}. "
+                             f"Si lo mueves aquí, esa casa se quedará sin él.")
+    destino = next((c["nombre"] for c in cuentas.listar_cuentas() if c["id"] == casa), casa)
+    for c, campos in otras:
+        with cuentas.en_cuenta(c["id"], "panel"):
+            cfg = nk.cargar_config()
+            if "smartlock_id" in campos:
+                cfg["nuki"]["smartlock_id"] = 0
+            if "opener_id" in campos:
+                cfg["nuki"].pop("opener_id", None)
+                cfg["nuki"].pop("opener_nombre", None)
+                cfg["programaciones"] = [p for p in cfg.get("programaciones") or [] if p["accion"] != "portal"]
+            nk.guardar_config(cfg)
+            nk.registrar("Dispositivo Nuki reasignado", "", f"Se ha movido a la casa «{destino}»")
+        _olvidar_lecturas(c["id"])
+
+
 def config_publica(cfg, usuario=None):
     av = telegram.avisos_vigentes(cfg)
     c = json.loads(json.dumps(cfg))
@@ -504,6 +563,8 @@ class Manejador(BaseHTTPRequestHandler):
         with cuentas.en_cuenta(s["cuenta"], s["usuario"]):
             try:
                 self._api(metodo, ruta, params, datos, s)
+            except ErrorReasignar as e:  # el panel pregunta y, si se confirma, repite con «reasignar»
+                self._responder(409, {"ok": False, "error": str(e), "reasignar": True})
             except Exception as e:
                 nk.log(f"ERROR (panel, {s['usuario']}): {e}")
                 if metodo == "POST":
@@ -698,9 +759,11 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._ok(config_publica(cfg, s["usuario"]))
             if ruta == "/api/estado":
                 return self._ok(estado_usuarios(cfg))
-            if ruta == "/api/cerraduras":
+            if ruta == "/api/cerraduras":  # el gestor solo ve los dispositivos asignados a su casa
+                propios = {str(cfg["nuki"].get(k)) for k in ("smartlock_id", "opener_id") if cfg["nuki"].get(k)}
                 return self._ok([{"id": c.get("smartlockId"), "nombre": c.get("name")}
-                                 for c in nk.Nuki(cfg["nuki"]["token"]).cerraduras()])
+                                 for c in nk.Nuki(cfg["nuki"]["token"]).cerraduras()
+                                 if admin or str(c.get("smartlockId")) in propios])
             if ruta == "/api/registro":
                 if not (cfg["nuki"].get("token") and cfg["nuki"].get("smartlock_id")):
                     raise RuntimeError("Configura primero el token y la cerradura en Ajustes.")
@@ -836,7 +899,7 @@ class Manejador(BaseHTTPRequestHandler):
 
         # ---------- ajustes e inquilinos
         if ruta == "/api/config":
-            return self._ok(self._guardar_config(cfg, datos))
+            return self._ok(self._guardar_config(cfg, datos, admin))
         if ruta == "/api/destinatario":
             return self._ok(self._guardar_destinatario(cfg, datos))
         if ruta == "/api/secciones":
@@ -1077,6 +1140,7 @@ class Manejador(BaseHTTPRequestHandler):
                 op = next((o for o in nuki_extra.capacidades(cfg, True).get("openers", []) if str(o["id"]) == str(ident)), None)
                 if not op:
                     raise RuntimeError("No encuentro ese Opener en tu cuenta de Nuki.")
+                asignar_nuki(cuentas.cuenta_actual(), op["id"], bool(datos.get("reasignar")))
                 cfg["nuki"]["opener_id"], cfg["nuki"]["opener_nombre"] = op["id"], op["nombre"]
                 nk.registrar("Opener asignado", op["nombre"], "")
             else:
@@ -1195,6 +1259,9 @@ class Manejador(BaseHTTPRequestHandler):
                     sid = str(datos.get("smartlock_id") or "").strip()
                     if not sid.isdigit():
                         raise RuntimeError("Pulsa «Buscar» y elige la cerradura.")
+                    if int(sid) != int(c["nuki"].get("smartlock_id") or 0):
+                        asignar_nuki(casa, sid, bool(datos.get("reasignar")))
+                        _olvidar_lecturas(casa)
                     c["nuki"]["smartlock_id"] = int(sid)
                     c["solo_camara"] = False
                     cambios.append("Nuki configurado")
@@ -1256,7 +1323,14 @@ class Manejador(BaseHTTPRequestHandler):
 
     # ---- guardados
     @staticmethod
-    def _guardar_config(cfg, datos):
+    def _guardar_config(cfg, datos, admin=False):
+        if not admin:  # la cerradura de la casa solo la asigna el administrador (el formulario la manda igual)
+            sid_actual = str(cfg["nuki"].get("smartlock_id") or "")
+            if ((datos.get("token") or "").strip()
+                    or ("smartlock_id" in datos and str(datos["smartlock_id"] or "").strip() not in ("", sid_actual))
+                    or ("solo_camara" in datos and bool(datos["solo_camara"]) != bool(cfg.get("solo_camara")))):
+                raise RuntimeError("Solo el administrador puede cambiar la cerradura Nuki de la casa.")
+            datos = {k: v for k, v in datos.items() if k not in ("token", "smartlock_id", "solo_camara")}
         if "solo_camara" in datos:
             cfg["solo_camara"] = bool(datos["solo_camara"])
         if datos.get("token"):
@@ -1274,6 +1348,11 @@ class Manejador(BaseHTTPRequestHandler):
                 if not encontradas:
                     raise RuntimeError(f"No encuentro ninguna cerradura con el ID {sid}. Pulsa «Buscar».")
                 sid = str(encontradas[0])
+            if int(sid or 0) != int(cfg["nuki"].get("smartlock_id") or 0):
+                casa = cuentas.cuenta_actual()
+                asignar_nuki(casa, sid, bool(datos.get("reasignar")))
+                _olvidar_lecturas(casa)
+                nk.registrar("Cerradura asignada", str(sid or "ninguna"), "")
             cfg["nuki"]["smartlock_id"] = int(sid or 0)
         cfg["dias_validez"] = max(1, min(60, int(datos.get("dias_validez") or 7)))
         if datos.get("vigilar_bajas_dias") not in (None, ""):

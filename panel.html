@@ -694,7 +694,7 @@
         </form>
       </div>
       <form id="ajustes" onsubmit="guardarAjustes(event)">
-        <div class="card" data-grupo="nuki" id="cardNuki">
+        <div class="card solo-admin" data-grupo="nuki" id="cardNuki">
           <h2>Cerradura Nuki</h2>
           <label class="interruptor" style="margin-top:12px"><input type="checkbox" id="solo_camara" onchange="$('nukiCampos').classList.toggle('oculto', this.checked)"> Esta casa no tiene cerradura Nuki (solo cámara)</label>
           <div class="ayuda">Así el panel solo muestra la cámara y sus avisos. Guarda y se recargará.</div>
@@ -1265,6 +1265,9 @@ async function api(metodo, ruta, cuerpo) {
     body: cuerpo ? JSON.stringify(cuerpo) : undefined });
   let datos = {}; try { datos = await r.json(); } catch (e) {}
   if (r.status === 401 && !ruta.startsWith("/api/entrar")) { mostrarAcceso(false); throw new Error(datos.error || "Sesión caducada"); }
+  // dispositivo Nuki que ya es de otra casa: se pregunta y, si se confirma, se repite moviéndolo
+  if (datos.reasignar && cuerpo && !cuerpo.reasignar && confirm(datos.error + "\n\n¿Lo mueves a esta casa?"))
+    return api(metodo, ruta, {...cuerpo, reasignar: true});
   if (!r.ok || datos.ok === false) throw new Error(datos.error || "Error desconocido");
   return datos;
 }
@@ -1933,8 +1936,8 @@ function pintarEstaCasa() {
   $("ecResumen").innerHTML = `<p style="margin:0 0 4px"><b>${esc(YO?.nombre_cuenta || "")}</b> · ${CONFIG?.solo_camara ? "📷 solo cámara (sin Nuki)" : CONFIG?.nuki?.token_puesto ? "🔐 con cerradura Nuki" : "🔐 Nuki sin configurar"}
     · ${n} cámara${n === 1 ? "" : "s"}</p>
     <div class="acciones" style="margin-top:8px">
-      <button type="button" onclick="verGrupo('nuki'); abrirTarjeta('cardNuki', true)">${ico("puerta")}Cerradura</button>
-      ${YO?.rol === "admin" ? `<button type="button" onclick="verGrupo('camaras'); abrirTarjeta('cardEufy', true)">${ico("camara")}Cámaras</button>` : ""}
+      ${YO?.rol === "admin" ? `<button type="button" onclick="verGrupo('nuki'); abrirTarjeta('cardNuki', true)">${ico("puerta")}Cerradura</button>
+      <button type="button" onclick="verGrupo('camaras'); abrirTarjeta('cardEufy', true)">${ico("camara")}Cámaras</button>` : ""}
       <button type="button" onclick="verGrupo('comunicacion'); abrirTarjeta('cardAvisos', true)">${ico("telegram")}Avisos</button>
     </div>`;
 }
