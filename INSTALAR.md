@@ -70,6 +70,8 @@ Opcional: si tienes un dominio propio que redirige al panel (por ejemplo, una p�
 
 **Dispositivos recordados** (opcional, si esa página es la de entrada en PHP con `api.php`): sirve para entrar por el dominio aunque Safari lleve el Relay privado de iCloud. La página recuerda cada móvil con una cookie de su servidor y el panel gestiona la lista en *Ajustes → Casas → Dispositivos recordados* (o con `/dispositivo` en Telegram, solo administradores). Panel y página firman sus mensajes con un secreto compartido: en el panel va en la bóveda (`web_dispositivos`, cuenta `_sistema`) y en la página, en `privado/secreto.php` (carpeta bloqueada con `Require all denied`).
 
+**Aviso si se cae el panel** (opcional, con esa misma página en PHP): cada 5 minutos el panel manda un «latido» firmado a `api.php`. Una tarea programada (cron) del hosting ejecuta `php …/privado/vigia.php` cada 5 minutos y, si pasan más de 10 minutos sin latido (corte de luz o de internet, servidor o panel parados), avisa por Telegram a los administradores, y otra vez cuando vuelve. También avisa si dentro del panel se para algo (el bot, los avisos de la cerradura…). Para poder avisar con el panel caído, la página guarda en `privado/vigia.json` el token del bot y los chats de los administradores. Si esa tarea deja de ejecutarse, el propio panel te avisa por Telegram.
+
 Ábrela, escribe el **código de instalación** y crea tu usuario administrador.
 
 En el iPhone: Safari → Compartir → **Añadir a pantalla de inicio**, y se abre como una app.

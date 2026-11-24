@@ -197,3 +197,44 @@ def leer_instalacion(casa):
             "casas": [c["id"] for c in cuentas.listar_cuentas()],
             "token_nuki": cuentas.boveda_leer("nuki_token", casa),
             "entra_admin": bool(cuentas.verificar_password("admin1", "contraseña-admin-ficticia"))}
+
+
+# ---------------------------------------------------------------- latido (aviso si se cae el panel)
+
+def latido():
+    """El latido lleva el token y los chats de los administradores (no los de otros usuarios), y lo que
+    falla dentro del panel; si la tarea del hosting deja de ejecutarse, el panel avisa una sola vez."""
+    import threading
+    import dispositivos
+    import latido as lt
+    import telegram
+    casa = cuentas.crear_cuenta("Casa de prueba")
+    cuentas.crear_usuario("admin1", "Administradora", "contraseña-admin-ficticia", "admin", casa)
+    cuentas.crear_usuario("gestor1", "Gestor", "contraseña-gestor-ficticia", "gestor", casa)
+    with cuentas.en_cuenta(casa):
+        cfg = nk.cargar_config()
+        cfg["telegram_avisos"] = {"admin1": {"chat": 111, "nombre": "Admin"}, "gestor1": {"chat": 222, "nombre": "G"}}
+        nk.guardar_config(cfg)
+    obs = {"sin_configurar": lt.latir({})}
+    os.environ["PANEL_URL_ENLACES"] = "https://puerta.ejemplo.invalid"
+    cuentas.boveda_guardar(dispositivos.CLAVE_BOVEDA, "secreto-ficticio", cuentas.CUENTA_SISTEMA)
+    cuentas.boveda_guardar(telegram.CLAVE_TOKEN, "123456:token-de-bot-ficticio", cuentas.CUENTA_SISTEMA)
+    llamadas, enviados = [], []
+    dispositivos._llamar = lambda accion, **d: llamadas.append({"accion": accion, **d}) or {"vigia": 0, "ahora": 0}
+    telegram.enviar = lambda chat, texto, *a, **k: enviados.append((chat, texto))
+
+    vivo = threading.Thread(target=threading.Event().wait, daemon=True)
+    vivo.start()
+    parado = threading.Thread(target=lambda: None)
+    parado.start()
+    parado.join()
+    lt.latir({"avisos": vivo, "telegram": parado}, "http://127.0.0.1:9/no-responde")
+    obs["latido"] = llamadas[-1]
+
+    t0 = 1_000_000
+    obs["recien_empezado"] = lt.revisar_vigia({"vigia": 0, "ahora": t0 + 60}, t0, ahora=t0 + 60)
+    obs["parado"] = lt.revisar_vigia({"vigia": t0, "ahora": t0 + 3600}, t0, ahora=t0 + 3600)
+    obs["parado_otra_vez"] = lt.revisar_vigia({"vigia": t0, "ahora": t0 + 3900}, t0, ahora=t0 + 3900)
+    obs["vuelve"] = lt.revisar_vigia({"vigia": t0 + 4000, "ahora": t0 + 4100}, t0, ahora=t0 + 4100)
+    obs["enviados"] = enviados
+    return obs

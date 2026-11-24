@@ -28,6 +28,7 @@ import camara
 import copias
 import dispositivos
 import ha
+import latido
 import extras
 import telegram
 import cuentas
@@ -1603,16 +1604,19 @@ def main():
         cuentas.renombrar_cuenta(cuentas.CUENTA_PRINCIPAL, "Mi casa")
     cargar_sesiones()
     GuardaSesiones().start()
-    waha.Vigilante().start()
-    Programador().start()
-    alertas.Vigilante().start()
+    hilos = {"whatsapp": waha.Vigilante(), "programador": Programador(), "avisos": alertas.Vigilante(),
+             "telegram": telegram.Escucha()}
+    hilos["whatsapp"].start()
+    hilos["programador"].start()
+    hilos["avisos"].start()
     extras.Extras().start()
-    telegram.Escucha().start()
+    hilos["telegram"].start()
     camara.CLIENTE.start()
     camara.MEMORIA.start()
     ha.PASARELA.start()
     camara.Limpieza().start()
     camara.VigilaCamaras().start()
+    latido.Latido(hilos, f"http://127.0.0.1:{PUERTO}/api/yo").start()
     servidor = ThreadingHTTPServer((ESCUCHAR, PUERTO), Manejador)
     print(f"Panel escuchando en http://{ESCUCHAR}:{PUERTO}", flush=True)
     try:
