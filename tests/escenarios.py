@@ -238,3 +238,41 @@ def latido():
     obs["vuelve"] = lt.revisar_vigia({"vigia": t0 + 4000, "ahora": t0 + 4100}, t0, ahora=t0 + 4100)
     obs["enviados"] = enviados
     return obs
+
+
+# ---------------------------------------------------------------- copia diaria recogida por un ordenador
+
+def copia_diaria_sin_telegram():
+    """Copia diaria: cuándo toca, que no se manda por Telegram si no se quiere y el aviso de recogida."""
+    from datetime import datetime, timedelta
+    import copias
+    preparar_instalacion_con_datos()
+    copias.poner_ajustes(activo=True, dia=copias.TODOS_LOS_DIAS, hora="03:30", guardar=3, telegram=False)
+    zona = datetime.now().astimezone().tzinfo
+    hoy = datetime(2026, 11, 25, tzinfo=zona)
+    copias._guardar_ajustes(ultima=(hoy - timedelta(days=1)).replace(hour=3, minute=30).isoformat())
+    obs = {"toca_antes_de_la_hora": copias.toca(hoy.replace(hour=3)),
+           "toca_despues_de_la_hora": copias.toca(hoy.replace(hour=4))}
+    copias._guardar_ajustes(ultima=hoy.replace(hour=3, minute=31).isoformat())
+    obs["toca_ya_hecha"] = copias.toca(hoy.replace(hour=23))
+
+    mandadas, avisos = [], []
+    copias._mandar_por_telegram = lambda nombre, contenido: mandadas.append(nombre) or (1, None)
+    copias.avisar_admins = avisos.append
+    obs["texto"] = copias.hacer_copia("prueba")
+    obs["mandadas"] = list(mandadas)
+
+    obs["sin_ordenador"] = copias.revisar_recogida()
+    marca = copias.CARPETA_COPIAS / copias.MARCA_RECOGIDA
+    ahora = datetime.now().astimezone()
+    marca.write_text((ahora - timedelta(days=3)).isoformat())
+    obs["recogida"] = copias.ajustes()["recogida"]
+    obs["retrasada"] = copias.revisar_recogida()
+    obs["retrasada_otra_vez"] = copias.revisar_recogida()
+    marca.write_text(ahora.isoformat())
+    obs["vuelve"] = copias.revisar_recogida()
+    obs["avisos"] = len(avisos)
+    copias.poner_ajustes(telegram=True)
+    copias.hacer_copia("prueba")
+    obs["mandadas_con_telegram"] = len(mandadas)
+    return obs

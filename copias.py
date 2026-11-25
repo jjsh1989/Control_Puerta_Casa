@@ -5,8 +5,13 @@ de las cámaras, y la clave maestra de la bóveda. Todo va en un único archivo 
 contraseña de copia que pone el administrador (scrypt + Fernet/AES). Sin esa contraseña la copia
 no sirve de nada; con ella se recupera todo en un servidor nuevo.
 
-Dónde va: se guardan las últimas (1 a 5, se elige; por defecto 4) en datos/copias/ y cada una se manda por Telegram a los
-administradores que reciben avisos (así queda fuera del servidor). Si una copia falla, avisa.
+Cuándo: cada día o un día de la semana, a la hora elegida.
+
+Dónde va: se guardan las últimas (1 a 5, se elige; por defecto 4) en datos/copias/. Para tenerlas fuera de casa:
+  - un ordenador las recoge por SSH, sin descifrarlas (copias-fuera/: llave que solo sirve para eso);
+    cada recogida deja la marca datos/copias/.recogida y, si pasan DIAS_SIN_RECOGER sin ella, se avisa;
+  - y/o se manda cada una por Telegram a los administradores que reciben avisos (se puede desactivar).
+Si una copia falla, avisa por Telegram.
 
 Comprobar: tras cada copia (y con el botón «Comprobar») se descifra y se valida en memoria,
 sin tocar nada: que se pueda abrir, que estén la clave maestra, los usuarios y la configuración
@@ -38,6 +43,9 @@ OPCIONES_GUARDAR = (1, 2, 3, 4, 5)
 EXCLUIR = {"camara", "copias", "importar"}
 CLAVE_BOVEDA = "copia_clave"  # en la bóveda de _sistema: la clave derivada (no la contraseña)
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+TODOS_LOS_DIAS = 7  # valor de «dia» para la copia diaria
+MARCA_RECOGIDA = ".recogida"  # la deja el ordenador que recoge las copias (copias-fuera/servidor-puerta-copias.sh)
+DIAS_SIN_RECOGER = 2
 
 
 def _derivar(password, sal):
@@ -52,7 +60,8 @@ def ajustes():
     import cuentas
     a = cuentas.leer_sistema().get("copias") or {}
     return {"activo": bool(a.get("activo")), "dia": int(a.get("dia", 6)), "hora": a.get("hora") or "03:30",
-            "guardar": int(a.get("guardar") or GUARDAR),
+            "guardar": int(a.get("guardar") or GUARDAR), "telegram": a.get("telegram", True) is not False,
+            "recogida": ultima_recogida(),
             "ultima": a.get("ultima"), "error": a.get("error"), "tamano": a.get("tamano"),
             # por separado: se creó (ultima), se pudo abrir y validar (comprobada), llegó fuera (envio)
             "comprobada": a.get("comprobada"), "envio": a.get("envio"),
@@ -75,6 +84,19 @@ def listar():
         salida.append({"nombre": p.name, "fecha": fecha, "tamano": f"{p.stat().st_size / 1024:.0f} KB",
                        "comprobacion": comprobaciones.get(p.name)})
     return salida
+
+
+def ultima_recogida():
+    """Cuándo recogió las copias el ordenador por última vez (ISO) o None si nunca."""
+    p = CARPETA_COPIAS / MARCA_RECOGIDA
+    try:
+        texto = p.read_text().strip()
+        return datetime.fromisoformat(texto).astimezone().isoformat(timespec="seconds")
+    except (OSError, ValueError):
+        try:
+            return datetime.fromtimestamp(p.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+        except OSError:
+            return None
 
 
 def _ruta(nombre):
@@ -123,8 +145,10 @@ def _guardar_ajustes(**cambios):
     cuentas.guardar_sistema(s)
 
 
-def poner_ajustes(activo=None, dia=None, hora=None, guardar=None):
+def poner_ajustes(activo=None, dia=None, hora=None, guardar=None, telegram=None):
     cambios = {}
+    if telegram is not None:
+        cambios["telegram"] = bool(telegram)
     if guardar is not None:
         if int(guardar) not in OPCIONES_GUARDAR:
             raise RuntimeError("Elige cuántas copias conservar: de 1 a 5.")
@@ -134,7 +158,7 @@ def poner_ajustes(activo=None, dia=None, hora=None, guardar=None):
             raise RuntimeError("Pon primero la contraseña de las copias.")
         cambios["activo"] = bool(activo)
     if dia is not None:
-        if int(dia) not in range(7):
+        if int(dia) not in range(TODOS_LOS_DIAS + 1):
             raise RuntimeError("Día no válido.")
         cambios["dia"] = int(dia)
     if hora is not None:
@@ -173,7 +197,7 @@ def _empaquetar():
 
 
 def hacer_copia(quien="automático"):
-    """Hace la copia, la guarda y la manda por Telegram. Devuelve un texto con el resultado."""
+    """Hace la copia, la guarda y (si está elegido) la manda por Telegram. Devuelve un texto con el resultado."""
     import cuentas
     import nuki_codigos as nk
     from cryptography.fernet import Fernet
@@ -203,10 +227,14 @@ def hacer_copia(quien="automático"):
     except Exception as e:
         comprobada = f"⚠️ NO se ha podido comprobar: {e}"
     _recortar()
-    enviados, error_envio = _mandar_por_telegram(nombre, contenido)
-    _apuntar_envio(enviados, error_envio)
-    texto = (f"{nombre} ({tam}) · guardada en el servidor, {comprobada}"
-             + (f" y enviada a {enviados} Telegram" if enviados else f" · ⚠️ no se pudo enviar por Telegram: {error_envio}"))
+    texto = f"{nombre} ({tam}) · guardada en el servidor, {comprobada}"
+    if ajustes()["telegram"]:
+        enviados, error_envio = _mandar_por_telegram(nombre, contenido)
+        _apuntar_envio(enviados, error_envio)
+        texto += f" y enviada a {enviados} Telegram" if enviados else f" · ⚠️ no se pudo enviar por Telegram: {error_envio}"
+    else:
+        _guardar_ajustes(envio=None)
+        texto += " · la recoge el ordenador"
     with cuentas.en_cuenta(cuentas.CUENTA_PRINCIPAL, quien):
         nk.registrar("Copia de seguridad", quien, texto)
     return texto
@@ -260,15 +288,18 @@ def avisar_admins(texto):
 
 
 def toca(ahora=None):
-    """¿Toca la copia semanal? (o se pasó la hora con el servidor apagado)."""
+    """¿Toca la copia (diaria o semanal)? También si se pasó la hora con el servidor apagado."""
     a = ajustes()
     if not (a["activo"] and a["clave"]):
         return False
     ahora = ahora or datetime.now().astimezone()
     h, m = map(int, a["hora"].split(":"))
-    prevista = ahora.replace(hour=h, minute=m, second=0, microsecond=0) - timedelta(days=(ahora.weekday() - a["dia"]) % 7)
+    cada = 1 if a["dia"] == TODOS_LOS_DIAS else 7
+    prevista = ahora.replace(hour=h, minute=m, second=0, microsecond=0)
+    if cada == 7:
+        prevista -= timedelta(days=(ahora.weekday() - a["dia"]) % 7)
     if prevista > ahora:
-        prevista -= timedelta(days=7)
+        prevista -= timedelta(days=cada)
     ultima = datetime.fromisoformat(a["ultima"]) if a["ultima"] else None
     ultimo_error = datetime.fromisoformat(a["error"]["hora"]) if a.get("error") else None
     if ultimo_error and ahora - ultimo_error < timedelta(hours=6):
@@ -278,13 +309,38 @@ def toca(ahora=None):
 
 def revisar():
     """Lo llama el hilo de extras cada minuto."""
-    if not toca():
-        return
-    try:
-        hacer_copia()
-    except Exception as e:
-        _guardar_ajustes(error={"hora": datetime.now().astimezone().isoformat(timespec="seconds"), "texto": str(e)})
-        avisar_admins(f"⚠️ No se pudo hacer la copia de seguridad del panel: {e}\nLo vuelvo a intentar en 6 horas.")
+    if toca():
+        try:
+            hacer_copia()
+        except Exception as e:
+            _guardar_ajustes(error={"hora": datetime.now().astimezone().isoformat(timespec="seconds"), "texto": str(e)})
+            avisar_admins(f"⚠️ No se pudo hacer la copia de seguridad del panel: {e}\nLo vuelvo a intentar en 6 horas.")
+    revisar_recogida()
+
+
+def revisar_recogida(ahora=None):
+    """Si un ordenador recoge las copias y deja de hacerlo, avisa una vez (y otra cuando vuelva).
+    Devuelve el texto enviado o None."""
+    a = ajustes()
+    if not (a["activo"] and a["recogida"]):
+        return None  # sin copias automáticas o sin ordenador que las recoja: no hay nada que vigilar
+    ahora = ahora or datetime.now().astimezone()
+    recogida = datetime.fromisoformat(a["recogida"])
+    retrasada = ahora - recogida > timedelta(days=DIAS_SIN_RECOGER)
+    import cuentas
+    avisada = bool((cuentas.leer_sistema().get("copias") or {}).get("aviso_recogida"))
+    if retrasada == avisada:
+        return None
+    if retrasada:
+        texto = (f"⚠️ El ordenador no recoge las copias de seguridad desde el {recogida:%d/%m a las %H:%M}. "
+                 f"En el servidor solo se conservan las {a['guardar']} últimas: si no las recoge, las más antiguas "
+                 f"se perderán sin haber salido de casa. Comprueba que el ordenador esté encendido y conectado "
+                 f"a Tailscale, o tráelas a mano.")
+    else:
+        texto = "✅ El ordenador vuelve a recoger las copias de seguridad."
+    avisar_admins(texto)
+    _guardar_ajustes(aviso_recogida=retrasada)
+    return texto
 
 
 # ---------------------------------------------------------------- comprobar

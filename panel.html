@@ -955,16 +955,17 @@
       <div class="card solo-admin" data-grupo="casas" id="cardCopias">
         <div class="cab" style="margin-bottom:0"><h2>Copia de seguridad</h2><span class="chip" id="cpChip"></span></div>
         <p class="muted peq" style="margin:8px 0 12px">Guarda los ajustes de todas las casas (códigos, personas, usuarios, Telegram, cámaras, claves de la bóveda…), pero no las fotos ni los clips.
-          Va cifrada con una contraseña tuya: en el servidor se conservan las que elijas y cada una te llega por Telegram, para tenerla fuera de casa.</p>
+          Va cifrada con una contraseña tuya: en el servidor se conservan las que elijas y, para tenerlas fuera de casa, las recoge tu ordenador (sin poder abrirlas) o te llegan por Telegram.</p>
         <div id="cpEstado" class="ayuda"></div>
         <div class="rejilla">
-          <div><label for="cp_dia">Cada semana, el</label><select id="cp_dia"></select></div>
+          <div><label for="cp_dia">Cuándo</label><select id="cp_dia"></select></div>
           <div><label for="cp_hora">A las</label><input id="cp_hora" type="time"></div>
           <div><label for="cp_guardar">Conservar</label><select id="cp_guardar">
             <option value="1">La última</option><option value="2">Las 2 últimas</option><option value="3">Las 3 últimas</option>
             <option value="4">Las 4 últimas</option><option value="5">Las 5 últimas</option></select>
             <div class="ayuda">Las más antiguas se borran solas del servidor (las que te llegaron por Telegram siguen allí).</div></div>
         </div>
+        <label class="interruptor" style="margin-top:8px"><input type="checkbox" id="cp_telegram"> Mandar también cada copia por Telegram</label>
         <label class="interruptor" style="margin-top:8px"><input type="checkbox" id="cp_activo"> Hacer la copia automáticamente</label>
         <div class="acciones" style="margin-top:12px">
           <button type="button" class="principal" onclick="guardarCopias(this)">Guardar</button>
@@ -2230,8 +2231,10 @@ async function resumenAhora(b) {
 }
 const DIAS_CP = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 function pintarCopias(c) {
-  if (!$("cp_dia").options.length) $("cp_dia").innerHTML = DIAS_CP.map((d, i) => `<option value="${i}">${d}</option>`).join("");
+  if (!$("cp_dia").options.length) $("cp_dia").innerHTML = '<option value="7">Todos los días</option>'
+    + DIAS_CP.map((d, i) => `<option value="${i}">Cada ${d}</option>`).join("");
   $("cp_dia").value = c.dia; $("cp_hora").value = c.hora; $("cp_activo").checked = c.activo; $("cp_guardar").value = c.guardar;
+  $("cp_telegram").checked = c.telegram;
   $("cpLista").innerHTML = (c.lista || []).length ? c.lista.map(x => `<div class="fila-seccion"><span class="nom">💾 ${x.fecha ? esc(new Date(x.fecha).toLocaleString("es-ES", {dateStyle: "medium", timeStyle: "short"})) : esc(x.nombre)}</span>
       <span class="chip">${esc(x.tamano)}</span>
       ${x.comprobacion ? (x.comprobacion.ok ? `<span class="chip on" title="Comprobada el ${esc(new Date(x.comprobacion.hora).toLocaleString("es-ES"))}">✅ Se puede recuperar</span>`
@@ -2241,12 +2244,13 @@ function pintarCopias(c) {
         <button type="button" class="peligro" title="Borrar" onclick="borrarCopia('${esc(x.nombre)}', this)">Borrar</button></div></div>`).join("")
     : '<div class="muted peq">Todavía no hay copias en el servidor.</div>';
   $("cpBotonClave").textContent = c.clave ? "Cambiar contraseña" : "Poner contraseña";
-  $("cpChip").textContent = !c.clave ? "Sin contraseña" : c.activo ? "Semanal" : "Desactivada";
+  $("cpChip").textContent = !c.clave ? "Sin contraseña" : c.activo ? (c.dia === 7 ? "Diaria" : "Semanal") : "Desactivada";
   $("cpChip").className = "chip" + (c.clave && c.activo ? " on" : c.error ? " aviso" : "");
   const f = (iso) => esc(new Date(iso).toLocaleString("es-ES")), ult = (c.lista || [])[0], comp = ult && ult.comprobacion;
   $("cpEstado").innerHTML = (c.ultima ? `💾 Última copia creada: ${f(c.ultima)}${c.tamano ? " (" + esc(c.tamano) + ")" : ""}.` : "Todavía no hay ninguna copia.")
     + (ult ? (comp ? (comp.ok ? `<br>🔍 Comprobada el ${f(comp.hora)}: se puede recuperar.` : `<br>⚠️ Comprobada el ${f(comp.hora)}: NO se puede recuperar (${esc(comp.error || "")}).`)
                    : "<br>🔍 La última copia aún no se ha comprobado.") : "")
+    + (c.recogida ? `<br>💻 Recogida por el ordenador: ${f(c.recogida)}${Date.now() - new Date(c.recogida) > 2 * 86400000 ? " ⚠️ hace más de 2 días" : ""}.` : "")
     + (c.envio ? (c.envio.enviados ? `<br>📤 Enviada fuera del servidor el ${f(c.envio.hora)} (${c.envio.enviados} Telegram)${c.envio.error ? "; con algún fallo: " + esc(c.envio.error) : ""}.`
                                    : `<br>⚠️ No se pudo enviar fuera del servidor (${f(c.envio.hora)}): ${esc(c.envio.error || "")}. La copia del servidor sí está guardada.`) : "")
     + (c.error ? `<br>⚠️ La copia falló el ${f(c.error.hora)}: ${esc(c.error.texto)}` : "");
@@ -2257,7 +2261,7 @@ async function guardarCopias(b) {
     const quedan = +$("cp_guardar").value, hay = document.querySelectorAll("#cpLista .fila-seccion").length;
     if (hay > quedan && !await confirmar(`Se borrarán del servidor las ${hay - quedan} copia${hay - quedan === 1 ? "" : "s"} más antigua${hay - quedan === 1 ? "" : "s"}.`,
         {titulo: "Conservar menos copias", boton: "Guardar y borrar", peligro: true})) return;
-    pintarCopias((await api("POST", "/api/admin/copias", {activo: $("cp_activo").checked, dia: +$("cp_dia").value, hora: $("cp_hora").value, guardar: quedan})).resultado);
+    pintarCopias((await api("POST", "/api/admin/copias", {activo: $("cp_activo").checked, dia: +$("cp_dia").value, hora: $("cp_hora").value, guardar: quedan, telegram: $("cp_telegram").checked})).resultado);
     aviso("Guardado");
   });
 }

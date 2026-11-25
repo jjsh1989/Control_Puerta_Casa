@@ -144,7 +144,17 @@ Ajustes → **Comunicación** → *Avisos*: activa los que quieras (código inco
 
 ## 8b. Copia de seguridad y cómo recuperarla
 
-En **Ajustes → Casas → Copia de seguridad** pon una contraseña de copias (apúntala en un sitio seguro) y activa la copia semanal. Cada copia es un archivo `copia-panel-AAAAMMDD-HHMM.lslab` cifrado: se guardan las últimas (de 1 a 5, tú eliges; las más antiguas se borran solas) en `datos/copias/` y te llega por Telegram. No incluye fotos ni clips, ni la sesión de WhatsApp (habrá que volver a vincularlo).
+En **Ajustes → Casas → Copia de seguridad** pon una contraseña de copias (apúntala en un sitio seguro) y activa la copia automática, **todos los días** o un día de la semana. Cada copia es un archivo `copia-panel-AAAAMMDD-HHMM.lslab` cifrado: se guardan las últimas (de 1 a 5, tú eliges; las más antiguas se borran solas) en `datos/copias/`. No incluye fotos ni clips, ni la sesión de WhatsApp (habrá que volver a vincularlo).
+
+Para tenerlas **fuera de casa**, elige una de las dos formas (o las dos):
+
+- **Que las recoja tu Mac** (carpeta `copias-fuera/`). El Mac las pide al servidor con una llave SSH que allí **solo sirve para eso** (listar, traer y marcar la recogida: ni terminal ni otras órdenes), las descarga sin descifrarlas, comprueba su huella SHA-256 y conserva las 3 más recientes en `~/Copias Puerta` (nunca borra si no ha podido traer las nuevas). Lo hace solo a las 10:00 y a las 18:00 (si el Mac está dormido, al despertar) y cuando quieras con doble clic en `Traer copias ahora.command`. Si algo falla, avisa en el Mac; si pasan más de 2 días sin recogerlas, el panel avisa por Telegram.
+  1. En el Mac: `bash copias-fuera/instalar-mac.sh root@servidor [puerto]` (crea la llave, el alias `puerta-copias`, la carpeta y la tarea).
+  2. En el servidor (con Proxmox, la máquina que aloja el contenedor), como root: copia allí `instalar-servidor.sh` y `servidor-puerta-copias.sh` y ejecuta la línea que te enseña el paso 1 (con el número del contenedor LXC si el panel va dentro de uno). Añade también al Mac la huella del servidor, como indica el paso 1.
+
+  ⚠️ **Si el servidor tiene Tailscale SSH activado**, por su dirección de Tailscale el puerto 22 lo atiende Tailscale y deja entrar sin mirar las llaves, así que la restricción no serviría. Usa otro puerto del SSH normal: `2222` en el paso 1 y `--puerto 2222` en el paso 2. Comprueba que `ssh puerta-copias id` responde «Esta llave solo sirve para las copias».
+  3. Comprueba con `Traer copias ahora.command`: en el panel aparece «Recogida por el ordenador».
+- **Por Telegram**: con «Mandar también cada copia por Telegram», cada copia te llega como archivo a los administradores.
 
 Para recuperarla en un servidor nuevo: instala el panel (pasos 1 a 3) **sin arrancarlo**, copia el archivo `.lslab` a `/opt/puerta/` y ejecuta:
 ```bash
@@ -154,7 +164,7 @@ docker compose up -d
 Te pedirá la contraseña de las copias y dejará `datos/` y la clave maestra en `secretos/` como estaban.
 Antes de cambiar nada comprueba la contraseña, que la copia esté completa y que se pueda escribir en las carpetas. Si algo falla, no toca la instalación. Lo que había antes queda en `datos/.antes-de-restaurar-…` y `secretos/.antes-de-restaurar-…`; bórralo cuando veas que todo funciona.
 
-En el panel, cada copia tiene el botón **🔍 Comprobar**, que la abre y la valida sin tocar nada. Cada copia nueva se comprueba sola. Arriba se ven por separado la fecha en que se hizo la última copia, la de su comprobación y si llegó por Telegram.
+En el panel, cada copia tiene el botón **🔍 Comprobar**, que la abre y la valida sin tocar nada. Cada copia nueva se comprueba sola. Arriba se ven por separado la fecha en que se hizo la última copia, la de su comprobación, cuándo la recogió el ordenador y si llegó por Telegram.
 
 ## 9. (Opcional) Un dominio propio
 

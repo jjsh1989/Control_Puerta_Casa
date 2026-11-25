@@ -61,7 +61,7 @@ The UI and docs are in Spanish; issues and pull requests in English are welcome 
 - Si alguien se queda delante de la cámara, las detecciones seguidas se juntan en **un solo mensaje** que se va actualizando.
 - Para los administradores: aviso si el **disco** pasa del 90 % o las **cámaras** llevan 15 min sin conexión.
 
-**Copia de seguridad** (Ajustes → Casas): semanal y cifrada con tu contraseña; en el servidor se conservan las últimas (1 a 5, a elegir) y cada una te llega por Telegram. En el panel se ven las guardadas, con botones para reenviarlas o borrarlas. Cómo recuperarla, en INSTALAR.md.
+**Copia de seguridad** (Ajustes → Casas): diaria o semanal y cifrada con tu contraseña; en el servidor se conservan las últimas (1 a 5, a elegir) y, para tenerlas fuera de casa, las recoge tu Mac con una llave que solo sirve para eso (`copias-fuera/`) o te llegan por Telegram. En el panel se ven las guardadas, con botones para reenviarlas o borrarlas. Cómo recuperarla, en INSTALAR.md.
 
 **Cámaras Eufy** (con una cuenta secundaria de Eufy)
 - ⭐ Cámara predeterminada por casa, 📷 avisos por movimiento o timbre, y cada cámara asignada a su casa (o oculta).
